@@ -1,0 +1,13 @@
+mode = "picture"
+
+[favorites]
+"cat" = "~/Pictures/wallpapers/cat.png"
+
+[logos]
+"logos" = "~/Pictures/logos/"  # This will load all images in the folder
+
+[avatars]
+"profile" = "~/Pictures/avatar/avatar.png"
+
+[other]
+"other" = "~/Pictures/wallpapers/other/"

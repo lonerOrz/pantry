@@ -1,0 +1,42 @@
+mode = "text"
+
+# === URL Category: Common Websites ===
+[url]
+"GitHub - lonerOrz" = "https://github.com/lonerOrz"
+"GitHub - Main" = "https://github.com"
+"Rust Lang" = "https://www.rust-lang.org"
+"Rust Crates" = "https://crates.io"
+"MDN Web Docs" = "https://developer.mozilla.org"
+"Stack Overflow" = "https://stackoverflow.com"
+"Reddit" = "https://www.reddit.com"
+"Hacker News" = "https://news.ycombinator.com"
+"Arch Linux Wiki" = "https://wiki.archlinux.org"
+"NixOS Wiki" = "https://nixos.wiki"
+"Bilibili" = "https://www.bilibili.com"
+"YouTube" = "https://www.youtube.com"
+"Twitter / X" = "https://x.com"
+"Mastodon" = "https://mastodon.social"
+
+# === Email Category ===
+[email]
+"Outlook" = "https://outlook.live.com"
+"Proton Mail" = "https://mail.proton.me"
+
+# === Tools Category ===
+[tools]
+"Vim Official" = "https://www.vim.org"
+"Neovim" = "https://neovim.io"
+"GitHub Copilot" = "https://github.com/features/copilot"
+"Visual Studio Code" = "https://code.visualstudio.com"
+"Alacritty Terminal" = "https://github.com/alacritty/alacritty"
+
+# === Docs Category ===
+[docs]
+"Rust Book" = "https://doc.rust-lang.org/book/"
+"Rust Nomicon" = "https://doc.rust-lang.org/nomicon/"
+"GTK4 Docs" = "https://docs.gtk.org/gtk4/"
+
+# === Community Category ===
+[community]
+"Rust Users Forum" = "https://users.rust-lang.org"
+"r/rust on Reddit" = "https://www.reddit.com/r/rust/"

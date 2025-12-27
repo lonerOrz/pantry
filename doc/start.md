@@ -1,0 +1,134 @@
+# Getting Started with Pantry
+
+Pantry is a generic selector tool for handling various types of entries with text and image preview modes. This guide will help you get started with pantry and show you various usage patterns.
+
+## Table of Contents
+
+- [Basic Usage](#basic-usage)
+- [Configuration](#configuration)
+- [Categories](#categories)
+- [Preview Modes](#preview-modes)
+- [Piping Output](#piping-output)
+- [Example Configurations](#example-configurations)
+
+## Basic Usage
+
+Basic usage of pantry:
+
+```bash
+pantry -f config.toml
+```
+
+This will open the pantry GUI with entries from the specified configuration file.
+
+## Configuration
+
+Pantry uses TOML format configuration files. The configuration contains a global mode and entries for various categories. Each category can optionally specify its own mode, which will override the global default.
+
+Example configuration:
+
+```toml
+# Global default mode
+mode = "text"
+
+# Commands category - uses default "text" mode
+[commands]
+"Shutdown" = "shutdown now"
+"Reboot" = "reboot"
+
+# Live wallpapers category - explicitly set to "picture" mode
+[live]
+mode = "picture"
+"live" = "~/Pictures/wallpapers/ja/"
+```
+
+## Categories
+
+You can specify a specific category to load using the `-c` option:
+
+```bash
+pantry -f config.toml -c bookmarks
+```
+
+This will load only entries from the "bookmarks" category.
+
+When no category is specified with `-c`, pantry will load only categories that match the global default mode. For example, if the global mode is set to "text", only categories with mode "text" will be loaded, and categories with mode "picture" will be ignored. This helps keep the interface clean and relevant to the selected mode.
+
+## Preview Modes
+
+Pantry supports two preview modes:
+
+- `text` mode: For text entries like bookmarks, commands, etc.
+- `picture` mode: For image files with preview functionality
+
+The mode can be set globally or per category.
+
+## Piping Output
+
+One of pantry's powerful features is the ability to pipe its output to other commands. When you select an entry in pantry and press Enter, the value of that entry is output to stdout, which can then be piped to other commands.
+
+### Examples:
+
+Open selected URL in your default browser:
+
+```bash
+pantry -f example-bookmarks.toml | xargs xdg-open
+```
+
+Execute selected command:
+
+```bash
+pantry -f example-commands.toml | xargs sh
+```
+
+Copy selected entry to clipboard (using xclip):
+
+```bash
+pantry -f example-bookmarks.toml | xclip -selection clipboard
+```
+
+Set selected image as wallpaper:
+
+```bash
+pantry -f example-pictures.toml | xargs nitrogen --set-zoom-fill
+```
+
+SSH to selected server:
+
+```bash
+pantry -f servers.toml | xargs ssh
+```
+
+Navigate to selected directory:
+
+```bash
+cd "$(pantry -f directories.toml)"
+```
+
+Open selected file with default application:
+
+```bash
+pantry -f files.toml | xargs xdg-open
+```
+
+Run selected script:
+
+```bash
+pantry -f scripts.toml | xargs chmod +x && pantry -f scripts.toml | xargs bash
+```
+
+Use with fzf for additional filtering:
+
+```bash
+pantry -f bookmarks.toml | fzf | xargs xdg-open
+```
+
+## Example Configurations
+
+Pantry comes with several example configuration files to help you get started:
+
+- [example-bookmarks.toml](example-bookmarks.toml) - Example configuration for managing bookmarks and URLs
+- [example-commands.toml](example-commands.toml) - Example configuration for system commands
+- [example-pictures.toml](example-pictures.toml) - Example configuration for image collections
+
+These examples demonstrate different ways to structure your configuration files and use the category mode override feature.

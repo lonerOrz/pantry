@@ -1,0 +1,121 @@
+/* Row body */
+.bookmark-row {
+  border-radius: 8px;
+  margin: 4px 4px;
+  padding: 10px 12px;
+  transition: none;
+}
+
+/* hover: very light, add slight shadow for elevation */
+.bookmark-row:hover {
+  background-color: alpha(@theme_fg_color, 0.04);
+  box-shadow: 0 1px 2px alpha(black, 0.05);
+}
+
+/* selected: use border to indicate, soft, add slight shadow */
+.bookmark-row:selected {
+  border: 2px solid @theme_selected_bg_color;
+  background-color: transparent;
+  color: @theme_fg_color;
+  box-shadow: 0 2px 4px alpha(black, 0.08);
+}
+
+/* selected + hover */
+.bookmark-row:selected:hover {
+  border: 2px solid @theme_selected_bg_color;
+  background-color: alpha(@theme_fg_color, 0.04);
+  box-shadow: 0 3px 6px alpha(black, 0.1);
+}
+
+/* focus state: remove default blue border, use background color change as focus indicator */
+.bookmark-row:focus,
+.bookmark-row:focus-within,
+.bookmark-row:focus-visible {
+  outline: none;
+  border: 2px solid @theme_selected_bg_color;
+  background-color: alpha(@theme_selected_bg_color, 0.1);
+}
+
+/* Title */
+.bookmark-row label:first-child {
+  font-weight: 600;
+  font-size: 1.05em;
+  ellipsize: end; /* Show ellipsis at the end when text is too long */
+}
+
+/* URL / secondary information */
+.dim-label {
+  opacity: 0.6;
+  font-size: 0.9em;
+  ellipsize: end; /* Show ellipsis at the end when text is too long */
+}
+
+/* Search notification: like toast, unlike widget, add fade-in animation */
+.app-notification {
+  background-color: alpha(@theme_bg_color, 0.95);
+  color: @theme_fg_color;
+  border-radius: 12px;
+  padding: 8px 16px;
+  margin-bottom: 48px; /* Increase bottom margin, move up to avoid covering details */
+  box-shadow:
+    0 2px 4px alpha(black, 0.1),
+    0 4px 12px alpha(black, 0.08);
+  transition: opacity 200ms ease-in-out;
+}
+
+/* Entire list container */
+.list {
+  border-radius: 8px;
+  border: 1px solid alpha(@theme_fg_color, 0.1);
+  background-color: @theme_bg_color; /* Make opaque to ensure covering below */
+  padding: 8px;
+}
+
+/* ScrolledWindow: ensure rounded corners take effect, need overflow: hidden; to crop content */
+.scrolledwindow {
+  border-radius: 8px;
+  background-color: transparent;
+  /* border: none; /* Remove default border if not needed */ */
+}
+
+/* Window overall: custom rounded corners and thin border (need set set_decorated(false) in code) */
+window {
+  border-radius: 12px;
+  border: 1px solid alpha(@theme_fg_color, 0.1); /* Thin border, 1px width */
+  box-shadow: 0 4px 12px alpha(black, 0.1); /* Optional, add window shadow */
+  background-color: @theme_bg_color;
+}
+
+/* Horizontal split window */
+paned.horizontal {
+  -gtkswindow-splitter-width: 8px;
+}
+
+paned.horizontal > widget:first-child {
+  min-width: 200px;
+  hexpand: true;
+}
+
+paned.horizontal > widget:last-child {
+  min-width: 400px;
+  hexpand: true;
+}
+
+/* Preview details style */
+.preview-details-label {
+  font-family: monospace;
+  font-size: 1.1em; /* Increase font size */
+  padding: 8px; /* Reduce padding */
+}
+
+.preview-details-label b {
+  font-weight: bold;
+  color: @theme_selected_bg_color; /* Add color to title */
+}
+
+/* Separator between image and details */
+.preview-separator {
+  background-color: alpha(@theme_fg_color, 0.1); /* Use light border */
+  min-height: 1px; /* Set separator height */
+  margin: 5px 0; /* Vertical margin */
+}

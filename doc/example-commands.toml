@@ -1,0 +1,19 @@
+# Example command configuration file - for quickly executing system commands
+# Global default mode (used when no category is specified)
+mode = "text"
+
+# Commands category - uses default "text" mode since no mode is specified
+[commands]
+"Shutdown" = "shutdown now"
+"Reboot" = "reboot"
+"Lock Screen" = "loginctl lock-session"
+"Volume Up" = "pactl set-sink-volume @DEFAULT_SINK@ +5%"
+"Volume Down" = "pactl set-sink-volume @DEFAULT_SINK@ -5%"
+"Mute Toggle" = "pactl set-sink-mute @DEFAULT_SINK@ toggle"
+"Screenshot" = "gnome-screenshot"
+"Record Screen" = "gnome-screenshot --record"
+
+# Live wallpapers category - explicitly set to "picture" mode
+[live]
+mode = "picture"
+"wallpapers" = "~/Pictures/wallpapers/live/"
