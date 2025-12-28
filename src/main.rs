@@ -21,7 +21,7 @@ const APP_ID: &str = "eu.soliprem.pantry";
 struct Args {
     /// Configuration file path [default: ~/.config/pantry/config.toml]
     #[arg(short = 'f', long)]
-    config: String,
+    config: Option<String>,
 
     /// Specify the category to load (load all categories if not specified)
     #[arg(short = 'c', long = "category")]
@@ -48,8 +48,9 @@ fn get_default_config_path() -> String {
 fn main() {
     let mut args = Args::parse();
 
-    if args.config.is_empty() {
-        args.config = get_default_config_path();
+    // Set default config path if not provided
+    if args.config.is_none() {
+        args.config = Some(get_default_config_path());
     }
 
     let app = Application::builder().application_id(APP_ID).build();
@@ -60,7 +61,9 @@ fn main() {
 fn build_ui(app: &Application, args: &Args) {
     let window = window::create_main_window(app, args);
 
-    let (main_widget, listbox, preview_area_rc_opt) = if matches!(get_config_mode(&args.config, &args.category), Mode::Picture) {
+    let config_path = args.config.as_ref().unwrap(); // Safe to unwrap since we set a default
+
+    let (main_widget, listbox, preview_area_rc_opt) = if matches!(get_config_mode(config_path, &args.category), Mode::Picture) {
         let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
 
         let listbox = list::create_listbox();
@@ -104,11 +107,11 @@ fn build_ui(app: &Application, args: &Args) {
 
     setup_keyboard_controller(&window, &listbox, search_query, search_label, args, preview_area_rc_opt.clone());
 
-    load_items_from_config(&listbox, &args.config, &args.category, preview_area_rc_opt.clone());
+    load_items_from_config(&listbox, config_path, &args.category, preview_area_rc_opt.clone());
 
 
     // Add ListBox selection change listener to update preview
-    if matches!(get_config_mode(&args.config, &args.category), Mode::Picture) {
+    if matches!(get_config_mode(config_path, &args.category), Mode::Picture) {
         let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
         let listbox_clone = listbox.clone();
         listbox.connect_selected_rows_changed(move |_listbox| {
@@ -216,7 +219,8 @@ fn setup_keyboard_controller(
     controller.set_propagation_phase(PropagationPhase::Capture);
     let listbox = listbox.clone();
     let search_label = search_label.clone();
-    let preview_enabled = matches!(get_config_mode(&args.config, &args.category), Mode::Picture);
+    let config_path = args.config.as_ref().unwrap(); // Safe to unwrap since we set a default
+    let preview_enabled = matches!(get_config_mode(config_path, &args.category), Mode::Picture);
     // let preview_area_rc = preview_area_opt.map(|p| std::rc::Rc::new(std::cell::RefCell::new(p))); // 移除此行，因为现在直接接收 Rc 了
     let preview_area_rc = preview_area_rc_opt;
 
