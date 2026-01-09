@@ -14,7 +14,7 @@ use config::{Config, Mode};
 use items::Item;
 use ui::{window, list, preview};
 
-const APP_ID: &str = "eu.soliprem.pantry";
+const APP_ID: &str = "io.github.lonerorz.pantry";
 
 #[derive(Parser, Debug)]
 #[command(name = "pantry", about = "A generic selector for various types of entries")]
@@ -77,16 +77,13 @@ fn build_ui(app: &Application, args: &Args) {
         preview_area.container.set_vexpand(true);
         paned.set_end_child(Some(&preview_area.container));
 
-        // Set Paned component properties to maintain fixed ratio
-        paned.set_resize_start_child(false);  // List area doesn't adjust with window size
+        paned.set_resize_start_child(true);
         paned.set_shrink_start_child(false);
-        paned.set_resize_end_child(true);   // Preview area adjusts with window size
+        paned.set_resize_end_child(true);
         paned.set_shrink_end_child(false);
 
-        // Set initial position, e.g. list area takes 400px (at default window size)
-        paned.set_position(400);
+        paned.set_position(360); // Default for 1200px window (30%)
 
-        // Wrap preview_area in Rc<RefCell>
         let preview_area_rc = std::rc::Rc::new(std::cell::RefCell::new(preview_area));
 
         (paned.upcast::<gtk4::Widget>(), listbox, Some(preview_area_rc))
@@ -123,6 +120,37 @@ fn build_ui(app: &Application, args: &Args) {
                 glib::ControlFlow::Break
             });
         });
+    }
+
+    if matches!(get_config_mode(config_path, &args.category), Mode::Picture) {
+        if let Some(paned_widget) = main_widget.downcast_ref::<gtk4::Paned>() {
+            let window_clone = window.clone();
+            let paned_widget_clone = paned_widget.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                let allocation = window_clone.default_size();
+                let width = allocation.0;
+
+                let position = (width as f64 * 0.3) as i32;
+                paned_widget_clone.set_position(position);
+
+                glib::ControlFlow::Break
+            });
+
+            let paned_widget_clone2 = paned_widget.clone();
+            window.connect_realize(move |win| {
+                let win_clone = win.clone();
+                let paned_widget_clone3 = paned_widget_clone2.clone();
+                glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
+                    let allocation = win_clone.default_size();
+                    let width = allocation.0;
+
+                    let position = (width as f64 * 0.3) as i32;
+                    paned_widget_clone3.set_position(position);
+
+                    glib::ControlFlow::Break
+                });
+            });
+        }
     }
 
     window.present();
