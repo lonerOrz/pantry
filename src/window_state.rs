@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct WindowState {
     pub width: i32,
     pub height: i32,
+    pub maximized: bool,
 }
 
 impl Default for WindowState {
@@ -13,6 +14,7 @@ impl Default for WindowState {
         WindowState {
             width: 1200,
             height: 800,
+            maximized: false,
         }
     }
 }
@@ -26,7 +28,7 @@ impl WindowState {
                 }
             }
         }
-        
+
         // Return default state if loading fails
         WindowState::default()
     }
@@ -37,7 +39,7 @@ impl WindowState {
             if let Some(parent) = config_path.parent() {
                 let _ = fs::create_dir_all(parent);
             }
-            
+
             if let Ok(toml_string) = toml::to_string(self) {
                 let _ = fs::write(config_path, toml_string);
             }

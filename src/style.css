@@ -3,7 +3,7 @@
   border-radius: 8px;
   margin: 4px 4px;
   padding: 10px 12px;
-  transition: none;
+  transition: all 200ms ease-in-out;
 }
 
 /* hover: very light, add slight shadow for elevation */
@@ -60,7 +60,15 @@
   box-shadow:
     0 2px 4px alpha(black, 0.1),
     0 4px 12px alpha(black, 0.08);
-  transition: opacity 200ms ease-in-out;
+  transition: all 200ms ease-in-out;
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.app-notification.hidden {
+  opacity: 0;
+  transform: translateY(20px);
+  pointer-events: none;
 }
 
 /* Entire list container */
@@ -118,4 +126,76 @@ paned.horizontal > widget:last-child {
   background-color: alpha(@theme_fg_color, 0.1); /* Use light border */
   min-height: 1px; /* Set separator height */
   margin: 5px 0; /* Vertical margin */
+}
+
+/* Media queries for responsive design */
+/* Large screens */
+@media (min-width: 1200px) {
+  window {
+    min-width: 1000px;
+    min-height: 700px;
+  }
+
+  .bookmark-row {
+    padding: 12px 16px;
+  }
+
+  paned.horizontal > widget:first-child {
+    min-width: 300px;
+  }
+
+  paned.horizontal > widget:last-child {
+    min-width: 600px;
+  }
+}
+
+/* Medium screens */
+@media (min-width: 768px) and (max-width: 1199px) {
+  window {
+    min-width: 800px;
+    min-height: 600px;
+  }
+
+  .bookmark-row {
+    padding: 10px 12px;
+  }
+
+  paned.horizontal > widget:first-child {
+    min-width: 250px;
+  }
+
+  paned.horizontal > widget:last-child {
+    min-width: 400px;
+  }
+}
+
+/* Small screens */
+@media (max-width: 767px) {
+  window {
+    min-width: 400px;
+    min-height: 500px;
+  }
+
+  .bookmark-row {
+    padding: 8px 10px;
+    font-size: 0.9em;
+  }
+
+  paned.horizontal {
+    -gtkorientable-orientation: vertical;
+  }
+
+  paned.horizontal > widget:first-child {
+    min-height: 150px;
+    min-width: unset;
+  }
+
+  paned.horizontal > widget:last-child {
+    min-height: 200px;
+    min-width: unset;
+  }
+
+  .dim-label {
+    font-size: 0.8em;
+  }
 }

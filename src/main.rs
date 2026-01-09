@@ -69,6 +69,11 @@ fn build_ui(app: &Application, args: &Args) {
     // Set window size from saved state
     window.set_default_size(window_state.width, window_state.height);
 
+    // Restore maximized state if needed
+    if window_state.maximized {
+        window.maximize();
+    }
+
     let config_path = args.config.as_ref().unwrap(); // Safe to unwrap since we set a default
 
     let (main_widget, listbox, preview_area_rc_opt) = if matches!(get_config_mode(config_path, &args.category), Mode::Picture) {
@@ -192,10 +197,10 @@ fn create_search_overlay(child: &impl gtk4::prelude::IsA<gtk4::Widget>) -> (Over
     overlay.set_child(Some(child));
     let label = Label::new(None);
     label.add_css_class("app-notification");
+    label.add_css_class("hidden"); // Initially hidden
     label.set_halign(gtk4::Align::Center);
     label.set_valign(gtk4::Align::End);
     label.set_margin_bottom(30);
-    label.set_visible(false);
     overlay.add_overlay(&label);
     (overlay, label)
 }
@@ -331,7 +336,7 @@ fn update_preview(listbox: &ListBox, preview_area_rc_opt: &Option<std::rc::Rc<st
 
 fn clear_search(query_state: &SearchState, listbox: &ListBox, label: &Label, preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>) {
     query_state.borrow_mut().clear();
-    label.set_visible(false);
+    label.add_css_class("hidden");
     listbox.invalidate_filter();
     update_selection_after_filter(listbox, preview_area_rc_opt);
 }
@@ -358,10 +363,16 @@ fn handle_selection(listbox: &ListBox) {
 }
 
 fn save_current_window_state(window: &ApplicationWindow) {
+    // Check if window is maximized
+    let maximized = window.is_maximized();
+
+    // Get the default size to save
     let (width, height) = window.default_size();
+
     let state = WindowState {
         width,
         height,
+        maximized,
     };
     state.save();
 }
@@ -391,10 +402,10 @@ fn handle_search_input(
     };
     if should_invalidate {
         if current_text.is_empty() {
-            label.set_visible(false);
+            label.add_css_class("hidden");
         } else {
             label.set_text(&format!("Search: {}", current_text));
-            label.set_visible(true);
+            label.remove_css_class("hidden");
         }
         listbox.invalidate_filter();
         update_selection_after_filter(listbox, preview_area_rc_opt); // 传递 preview_area_rc_opt
