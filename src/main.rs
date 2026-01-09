@@ -10,9 +10,11 @@ mod config;
 mod items;
 mod ui;
 mod utils;
+mod window_state;
 use config::{Config, Mode};
 use items::Item;
 use ui::{window, list, preview};
+use window_state::WindowState;
 
 const APP_ID: &str = "io.github.lonerorz.pantry";
 
@@ -59,7 +61,13 @@ fn main() {
 }
 
 fn build_ui(app: &Application, args: &Args) {
+    // Load saved window state
+    let window_state = WindowState::load();
+
     let window = window::create_main_window(app, args);
+
+    // Set window size from saved state
+    window.set_default_size(window_state.width, window_state.height);
 
     let config_path = args.config.as_ref().unwrap(); // Safe to unwrap since we set a default
 
@@ -340,12 +348,22 @@ fn handle_selection(listbox: &ListBox) {
             use std::io::{self, Write};
             let _ = io::stdout().flush();
 
-            // 退出程序
+            // 保存当前窗口状态
             if let Some(window) = listbox.root().and_downcast::<ApplicationWindow>() {
+                save_current_window_state(&window);
                 window.close();
             }
         }
     }
+}
+
+fn save_current_window_state(window: &ApplicationWindow) {
+    let (width, height) = window.default_size();
+    let state = WindowState {
+        width,
+        height,
+    };
+    state.save();
 }
 
 // --- Input Handler with UI Feedback ---

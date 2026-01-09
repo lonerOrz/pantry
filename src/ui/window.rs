@@ -10,7 +10,7 @@ pub fn create_main_window(app: &Application, _args: &Args) -> ApplicationWindow 
         .title("pantry")
         .default_width(1200)
         .default_height(800)
-        .resizable(false)  // Prevent window resizing to maintain fixed ratio
+        .resizable(true)  // Allow window resizing
         .modal(true)
         .decorated(false)
         .build();
