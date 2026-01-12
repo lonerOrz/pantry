@@ -1,4 +1,4 @@
-mode = "text"
+display = "text"
 
 # === URL Category: Common Websites ===
 [url]

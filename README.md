@@ -77,7 +77,7 @@ pantry -f /path/to/config.toml -c bookmarks
 Options:
 
 - `-f, --config`: Configuration file path (defaults to `~/.config/pantry/config.toml`)
-- `-c, --category`: Specify the category to load (load only categories matching the global mode if not specified)
+- `-c, --category`: Specify the category to load (load only categories matching the global display mode if not specified)
 
 ## Documentation
 
@@ -85,7 +85,7 @@ For detailed usage instructions and examples, see our [Getting Started Guide](do
 
 ## Configuration
 
-pantry uses TOML format configuration files. Each category can optionally specify its own mode, which will override the global default.
+pantry uses TOML format configuration files with separate display and input modes. Each category can optionally specify its own modes, which will override the global defaults.
 
 For detailed configuration examples, see our [Getting Started Guide](doc/start.md) and example files in the [doc](doc/) directory.
 

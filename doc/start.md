@@ -23,22 +23,22 @@ This will open the pantry GUI with entries from the specified configuration file
 
 ## Configuration
 
-Pantry uses TOML format configuration files. The configuration contains a global mode and entries for various categories. Each category can optionally specify its own mode, which will override the global default.
+Pantry uses TOML format configuration files with separate display and input modes. The configuration contains global defaults and entries for various categories. Each category can optionally specify its own modes, which will override the global defaults.
 
 Example configuration:
 
 ```toml
-# Global default mode
-mode = "text"
+# Global default display mode
+display = "text"
 
-# Commands category - uses default "text" mode
+# Commands category - uses default "text" display mode
 [commands]
 "Shutdown" = "shutdown now"
 "Reboot" = "reboot"
 
-# Live wallpapers category - explicitly set to "picture" mode
+# Live wallpapers category - explicitly set to "picture" display mode
 [live]
-mode = "picture"
+display = "picture"
 "live" = "~/Pictures/wallpapers/ja/"
 ```
 
@@ -52,16 +52,16 @@ pantry -f config.toml -c bookmarks
 
 This will load only entries from the "bookmarks" category.
 
-When no category is specified with `-c`, pantry will load only categories that match the global default mode. For example, if the global mode is set to "text", only categories with mode "text" will be loaded, and categories with mode "picture" will be ignored. This helps keep the interface clean and relevant to the selected mode.
+When no category is specified with `-c`, pantry will load only categories that match the global default display mode. For example, if the global display mode is set to "text", only categories with display mode "text" will be loaded, and categories with display mode "picture" will be ignored. This helps keep the interface clean and relevant to the selected display mode.
 
 ## Preview Modes
 
-Pantry supports two preview modes:
+Pantry supports two display modes:
 
 - `text` mode: For text entries like bookmarks, commands, etc.
 - `picture` mode: For image files with preview functionality
 
-The mode can be set globally or per category.
+The display mode can be set globally or per category.
 
 ## Piping Output
 
@@ -131,4 +131,4 @@ Pantry comes with several example configuration files to help you get started:
 - [example-commands.toml](example-commands.toml) - Example configuration for system commands
 - [example-pictures.toml](example-pictures.toml) - Example configuration for image collections
 
-These examples demonstrate different ways to structure your configuration files and use the category mode override feature.
+These examples demonstrate different ways to structure your configuration files and use the category display mode override feature.

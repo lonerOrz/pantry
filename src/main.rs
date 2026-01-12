@@ -11,7 +11,7 @@ mod items;
 mod ui;
 mod utils;
 mod window_state;
-use config::{Config, Mode};
+use config::{Config, DisplayMode};
 use items::Item;
 use ui::{window, list, preview};
 use window_state::WindowState;
@@ -29,7 +29,7 @@ struct Args {
     #[arg(short = 'c', long = "category")]
     category: Option<String>,
 
-    /// Preview mode: text or image (now read from config file, this parameter is deprecated)
+    /// Preview display: text or image (now read from config file, this parameter is deprecated)
     #[arg(long = "preview", hide = true, default_value = "auto")]
     preview_mode: String,  // "auto", "text", "image"
 }
@@ -76,7 +76,7 @@ fn build_ui(app: &Application, args: &Args) {
 
     let config_path = args.config.as_ref().unwrap(); // Safe to unwrap since we set a default
 
-    let (main_widget, listbox, preview_area_rc_opt) = if matches!(get_config_mode(config_path, &args.category), Mode::Picture) {
+    let (main_widget, listbox, preview_area_rc_opt) = if matches!(get_config_display_mode(config_path, &args.category), DisplayMode::Picture) {
         let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
 
         let listbox = list::create_listbox();
@@ -121,7 +121,7 @@ fn build_ui(app: &Application, args: &Args) {
 
 
     // Add ListBox selection change listener to update preview
-    if matches!(get_config_mode(config_path, &args.category), Mode::Picture) {
+    if matches!(get_config_display_mode(config_path, &args.category), DisplayMode::Picture) {
         let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
         let listbox_clone = listbox.clone();
         listbox.connect_selected_rows_changed(move |_listbox| {
@@ -135,7 +135,7 @@ fn build_ui(app: &Application, args: &Args) {
         });
     }
 
-    if matches!(get_config_mode(config_path, &args.category), Mode::Picture) {
+    if matches!(get_config_display_mode(config_path, &args.category), DisplayMode::Picture) {
         if let Some(paned_widget) = main_widget.downcast_ref::<gtk4::Paned>() {
             let window_clone = window.clone();
             let paned_widget_clone = paned_widget.clone();
@@ -169,18 +169,18 @@ fn build_ui(app: &Application, args: &Args) {
     window.present();
 }
 
-fn get_config_mode(config_path: &str, category_filter: &Option<String>) -> Mode {
+fn get_config_display_mode(config_path: &str, category_filter: &Option<String>) -> DisplayMode {
     if let Ok(content) = std::fs::read_to_string(config_path) {
         if let Ok(config) = toml::from_str::<Config>(&content) {
             if let Some(category) = category_filter {
                 if let Some(category_config) = config.categories.get(category) {
-                    return category_config.mode.clone().unwrap_or(config.mode.clone());
+                    return category_config.display.clone().unwrap_or(config.display.clone());
                 }
             }
-            return config.mode;
+            return config.display;
         }
     }
-    Mode::Text
+    DisplayMode::Text
 }
 
 // --- UI Components ---
@@ -261,7 +261,7 @@ fn setup_keyboard_controller(
     let listbox = listbox.clone();
     let search_label = search_label.clone();
     let config_path = args.config.as_ref().unwrap(); // Safe to unwrap since we set a default
-    let preview_enabled = matches!(get_config_mode(config_path, &args.category), Mode::Picture);
+    let preview_enabled = matches!(get_config_display_mode(config_path, &args.category), DisplayMode::Picture);
     // let preview_area_rc = preview_area_opt.map(|p| std::rc::Rc::new(std::cell::RefCell::new(p))); // 移除此行，因为现在直接接收 Rc 了
     let preview_area_rc = preview_area_rc_opt;
 
@@ -322,7 +322,7 @@ fn update_preview(listbox: &ListBox, preview_area_rc_opt: &Option<std::rc::Rc<st
             if let Some(item_ptr) = unsafe { selected_row.data::<Item>("item") } {
                 let item = unsafe { &*item_ptr.as_ptr() };
 
-                if matches!(item.mode, Mode::Picture) && utils::is_image_file(&item.value) {
+                if matches!(item.display, DisplayMode::Picture) && utils::is_image_file(&item.value) {
                     let preview_area = &*preview_area_rc.borrow();
                     preview_area.update_with_image(item);
                 } else {
@@ -477,30 +477,30 @@ fn load_items_from_config(
 
         let mut items = Vec::new();
 
-        // If a category is specified, load only items from that category, otherwise load only categories with the same mode as the global default
+        // If a category is specified, load only items from that category, otherwise load only categories with the same display mode as the global default
         if let Some(ref category) = category_filter {
             if let Some(category_config) = config.categories.get(category) {
-                let effective_mode = category_config.mode.clone().unwrap_or(config.mode.clone());
+                let effective_display = category_config.display.clone().unwrap_or(config.display.clone());
                 for (key, value) in &category_config.entries {
                     items.push(Item {
                         title: key.clone(),
                         value: value.clone(),
                         category: category.clone(),
-                        mode: effective_mode.clone(),
+                        display: effective_display.clone(),
                     });
                 }
             }
         } else {
-            // Load items only from categories that match the global default mode
+            // Load items only from categories that match the global default display mode
             for (category_name, category_config) in &config.categories {
-                let effective_mode = category_config.mode.clone().unwrap_or(config.mode.clone());
-                if effective_mode == config.mode {
+                let effective_display = category_config.display.clone().unwrap_or(config.display.clone());
+                if effective_display == config.display {
                     for (key, value) in &category_config.entries {
                         items.push(Item {
                             title: key.clone(),
                             value: value.clone(),
                             category: category_name.clone(),
-                            mode: effective_mode.clone(),
+                            display: effective_display.clone(),
                         });
                     }
                 }
@@ -511,7 +511,7 @@ fn load_items_from_config(
         let all_paths: Vec<_> = items
             .par_iter()
             .flat_map(|item| {
-                if let Mode::Picture = item.mode {
+                if let DisplayMode::Picture = item.display {
                     let expanded_path = utils::expand_tilde(&item.value);
                     let expanded_path_str = expanded_path.to_string_lossy().to_string();
 
@@ -528,7 +528,7 @@ fn load_items_from_config(
                                             title: format!("{} ({})", path.file_name().unwrap_or_default().to_string_lossy(), item.title),
                                             value: path_str.to_string(),
                                             category: item.category.clone(),
-                                            mode: item.mode.clone(),
+                                            display: item.display.clone(),
                                         });
                                     }
                                 }
@@ -540,7 +540,7 @@ fn load_items_from_config(
                             title: item.title.clone(),
                             value: expanded_path_str,
                             category: item.category.clone(),
-                            mode: item.mode.clone(),
+                            display: item.display.clone(),
                         }]
                     }
                 } else {

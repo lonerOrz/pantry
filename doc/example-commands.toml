@@ -1,8 +1,8 @@
 # Example command configuration file - for quickly executing system commands
-# Global default mode (used when no category is specified)
-mode = "text"
+# Global default display mode (used when no category is specified)
+display = "text"
 
-# Commands category - uses default "text" mode since no mode is specified
+# Commands category - uses default "text" display mode since no display is specified
 [commands]
 "Shutdown" = "shutdown now"
 "Reboot" = "reboot"
@@ -13,7 +13,7 @@ mode = "text"
 "Screenshot" = "gnome-screenshot"
 "Record Screen" = "gnome-screenshot --record"
 
-# Live wallpapers category - explicitly set to "picture" mode
+# Live wallpapers category - explicitly set to "picture" display mode
 [live]
-mode = "picture"
+display = "picture"
 "wallpapers" = "~/Pictures/wallpapers/live/"

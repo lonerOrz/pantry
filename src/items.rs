@@ -1,9 +1,9 @@
-use crate::config::Mode;
+use crate::config::DisplayMode;
 
 #[derive(Debug, Clone)]
 pub struct Item {
     pub title: String,
     pub value: String,
     pub category: String,
-    pub mode: Mode,
+    pub display: DisplayMode,
 }

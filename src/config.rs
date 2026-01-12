@@ -3,20 +3,20 @@ use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
-pub enum Mode {
+pub enum DisplayMode {
     Text,
     Picture,
 }
 
-impl Default for Mode {
+impl Default for DisplayMode {
     fn default() -> Self {
-        Mode::Text
+        DisplayMode::Text
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Category {
-    pub mode: Option<Mode>,
+    pub display: Option<DisplayMode>,
     pub entries: HashMap<String, String>,
 }
 
@@ -41,16 +41,16 @@ impl<'de> Deserialize<'de> for Category {
             where
                 V: MapAccess<'de>,
             {
-                let mut mode = None;
+                let mut display = None;
                 let mut entries = HashMap::new();
 
                 while let Some(key) = map.next_key::<String>()? {
                     match key.as_str() {
-                        "mode" => {
-                            if mode.is_some() {
-                                return Err(serde::de::Error::duplicate_field("mode"));
+                        "display" => {
+                            if display.is_some() {
+                                return Err(serde::de::Error::duplicate_field("display"));
                             }
-                            mode = Some(map.next_value()?);
+                            display = Some(map.next_value()?);
                         }
                         _ => {
                             let value: String = map.next_value()?;
@@ -59,7 +59,7 @@ impl<'de> Deserialize<'de> for Category {
                     }
                 }
 
-                Ok(Category { mode, entries })
+                Ok(Category { display, entries })
             }
         }
 
@@ -69,7 +69,7 @@ impl<'de> Deserialize<'de> for Category {
 
 #[derive(Debug)]
 pub struct Config {
-    pub mode: Mode,
+    pub display: DisplayMode,
     pub categories: HashMap<String, Category>,
 }
 
@@ -94,16 +94,16 @@ impl<'de> Deserialize<'de> for Config {
             where
                 V: MapAccess<'de>,
             {
-                let mut mode = None;
+                let mut display = None;
                 let mut categories = HashMap::new();
 
                 while let Some(key) = map.next_key::<String>()? {
                     match key.as_str() {
-                        "mode" => {
-                            if mode.is_some() {
-                                return Err(serde::de::Error::duplicate_field("mode"));
+                        "display" => {
+                            if display.is_some() {
+                                return Err(serde::de::Error::duplicate_field("display"));
                             }
-                            mode = Some(map.next_value()?);
+                            display = Some(map.next_value()?);
                         }
                         _ => {
                             let category: Category = map.next_value()?;
@@ -113,7 +113,7 @@ impl<'de> Deserialize<'de> for Config {
                 }
 
                 Ok(Config {
-                    mode: mode.unwrap_or_default(),
+                    display: display.unwrap_or_default(),
                     categories,
                 })
             }

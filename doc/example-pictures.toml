@@ -1,4 +1,4 @@
-mode = "picture"
+display = "picture"
 
 [favorites]
 "cat" = "~/Pictures/wallpapers/cat.png"
