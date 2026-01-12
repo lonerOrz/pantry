@@ -322,9 +322,9 @@ fn update_preview(listbox: &ListBox, preview_area_rc_opt: &Option<std::rc::Rc<st
             if let Some(item_ptr) = unsafe { selected_row.data::<Item>("item") } {
                 let item = unsafe { &*item_ptr.as_ptr() };
 
-                if matches!(item.display, DisplayMode::Picture) && utils::is_image_file(&item.value) {
+                if matches!(item.display, DisplayMode::Picture) {
                     let preview_area = &*preview_area_rc.borrow();
-                    preview_area.update_with_image(item);
+                    preview_area.update_with_content(item);
                 } else {
                     let preview_area = &*preview_area_rc.borrow();
                     preview_area.clear();

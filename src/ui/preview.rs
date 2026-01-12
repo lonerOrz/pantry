@@ -1,4 +1,4 @@
-use gtk4::{Picture, Label, Box as GtkBox, Orientation, Align, ScrolledWindow, Grid, glib};
+use gtk4::{Picture, Label, Box as GtkBox, Orientation, Align, ScrolledWindow, Grid, glib, TextView};
 use gtk4::prelude::*;
 use gdk_pixbuf::Pixbuf;
 use std::sync::{Arc, Mutex};
@@ -88,7 +88,18 @@ impl PreviewArea {
         }
     }
 
-    pub fn update_with_image(&self, item: &Item) {
+    pub fn update_with_content(&self, item: &Item) {
+        // Check if the value is an image file or text content
+        if crate::utils::is_image_file(&item.value) {
+            // If it's an image file, use the image preview
+            self.update_with_image_content(item);
+        } else {
+            // If it's text content, use the text preview
+            self.update_with_text_content(item);
+        }
+    }
+
+    fn update_with_image_content(&self, item: &Item) {
         let image_path = &item.value; // Get image path from Item's value field
         let expanded_path = crate::utils::expand_tilde(image_path);
         let path_str = expanded_path.to_string_lossy().to_string();
@@ -326,6 +337,67 @@ impl PreviewArea {
                 glib::ControlFlow::Break // Execute only once
             });
         });
+    }
+
+    fn update_with_text_content(&self, item: &Item) {
+        // Prepare value for display - truncate if too long
+        let display_value = if item.value.len() > 100 {
+            format!("{}...", &item.value[..100])
+        } else {
+            item.value.clone()
+        };
+
+        // Update details label
+        let details_text = format!(
+            "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Value:</b> {}",
+            glib::markup_escape_text(&item.title),
+            glib::markup_escape_text(&item.category),
+            glib::markup_escape_text(&display_value)
+        );
+        self.details_label.set_markup(&details_text);
+
+        // Allow multiline for title/category but ellipsize the entire label if needed
+        self.details_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+
+        // Ensure scrolling to top
+        let adjustment = self.details_scrolled.vadjustment();
+        adjustment.set_value(0.0);
+
+        // Clear previous content
+        while let Some(child) = self.image_container.first_child() {
+            self.image_container.remove(&child);
+        }
+
+        // Create a TextView for text content
+        let text_view = TextView::new();
+        text_view.set_editable(false);
+        text_view.set_cursor_visible(false);
+        text_view.set_wrap_mode(gtk4::WrapMode::Word); // Wrap at word boundaries only
+        text_view.set_left_margin(10);
+        text_view.set_right_margin(10);
+        text_view.set_top_margin(10);
+        text_view.set_bottom_margin(10);
+
+        // Set the text content
+        let buffer = text_view.buffer();
+        buffer.set_text(&item.value);
+
+        // Configure the text view to expand properly
+        text_view.set_hexpand(true);
+        text_view.set_vexpand(true);
+
+        // Wrap the TextView in a ScrolledWindow to allow scrolling
+        let scrolled_window = gtk4::ScrolledWindow::new();
+        scrolled_window.set_child(Some(&text_view));
+        scrolled_window.set_hexpand(true);
+        scrolled_window.set_vexpand(true);
+
+        // Enable both horizontal and vertical scrolling
+        scrolled_window.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
+        scrolled_window.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
+
+        // Add the scrolled window to the container
+        self.image_container.append(&scrolled_window);
     }
 
     pub fn clear(&self) {
