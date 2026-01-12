@@ -287,8 +287,16 @@ impl PreviewArea {
     }
 
     fn update_with_text_content(&self, item: &Item) {
-        let display_value = if item.value.len() > 100 {
-            format!("{}...", &item.value[..100])
+        let display_value = if item.value.chars().count() > 100 {
+            let mut truncated = String::new();
+            for (i, ch) in item.value.chars().enumerate() {
+                if i >= 100 {
+                    truncated.push_str("...");
+                    break;
+                }
+                truncated.push(ch);
+            }
+            truncated
         } else {
             item.value.clone()
         };

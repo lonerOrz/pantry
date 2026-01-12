@@ -5,13 +5,14 @@ use gtk4::{
 };
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::process::Command;
 
 mod config;
 mod items;
 mod ui;
 mod utils;
 mod window_state;
-use config::{Config, DisplayMode};
+use config::{Config, DisplayMode, SourceMode};
 use items::Item;
 use ui::{list, preview, window};
 use window_state::WindowState;
@@ -248,6 +249,21 @@ fn setup_filter_func(listbox: &ListBox, query_state: SearchState) {
             false
         }
     }));
+}
+
+// Helper function to execute commands and return output
+fn execute_command(command: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .output()?;
+
+    if output.status.success() {
+        Ok(String::from_utf8(output.stdout)?)
+    } else {
+        let error_msg = String::from_utf8(output.stderr)?;
+        Err(format!("Command failed: {}", error_msg).into())
+    }
 }
 
 fn fuzzy_match(text: &str, pattern: &str) -> bool {
@@ -510,13 +526,49 @@ fn load_items_from_config(
                     .display
                     .clone()
                     .unwrap_or(config.display.clone());
-                for (key, value) in &category_config.entries {
-                    items.push(Item {
-                        title: key.clone(),
-                        value: value.clone(),
-                        category: category.clone(),
-                        display: effective_display.clone(),
-                    });
+                let effective_source = category_config
+                    .source
+                    .clone()
+                    .unwrap_or(config.source.clone());
+
+                match effective_source {
+                    SourceMode::Config => {
+                        // Static mode: use entries from config file
+                        for (key, value) in &category_config.entries {
+                            items.push(Item {
+                                title: key.clone(),
+                                value: value.clone(),
+                                category: category.clone(),
+                                display: effective_display.clone(),
+                                source: effective_source.clone(),
+                            });
+                        }
+                    }
+                    SourceMode::Command => {
+                        // Command mode: execute command and use its output
+                        for (key, cmd) in &category_config.entries {
+                            if let Ok(output) = execute_command(cmd) {
+                                let lines: Vec<&str> = output.lines().collect();
+                                for (idx, line) in lines.iter().enumerate() {
+                                    if !line.trim().is_empty() {
+                                        let title = if lines.len() == 1 {
+                                            key.clone()  // Single line output uses original key
+                                        } else {
+                                            format!("{} [{}]", key, idx + 1)  // Multi-line adds index
+                                        };
+
+                                        items.push(Item {
+                                            title,
+                                            value: line.trim().to_string(),
+                                            category: category.clone(),
+                                            display: effective_display.clone(),
+                                            source: effective_source.clone(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } else {
@@ -526,14 +578,48 @@ fn load_items_from_config(
                     .display
                     .clone()
                     .unwrap_or(config.display.clone());
+                let effective_source = category_config
+                    .source
+                    .clone()
+                    .unwrap_or(config.source.clone());
+
                 if effective_display == config.display {
-                    for (key, value) in &category_config.entries {
-                        items.push(Item {
-                            title: key.clone(),
-                            value: value.clone(),
-                            category: category_name.clone(),
-                            display: effective_display.clone(),
-                        });
+                    match effective_source {
+                        SourceMode::Config => {
+                            for (key, value) in &category_config.entries {
+                                items.push(Item {
+                                    title: key.clone(),
+                                    value: value.clone(),
+                                    category: category_name.clone(),
+                                    display: effective_display.clone(),
+                                    source: effective_source.clone(),
+                                });
+                            }
+                        }
+                        SourceMode::Command => {
+                            for (key, cmd) in &category_config.entries {
+                                if let Ok(output) = execute_command(cmd) {
+                                    let lines: Vec<&str> = output.lines().collect();
+                                    for (idx, line) in lines.iter().enumerate() {
+                                        if !line.trim().is_empty() {
+                                            let title = if lines.len() == 1 {
+                                                key.clone()
+                                            } else {
+                                                format!("{} [{}]", key, idx + 1)
+                                            };
+
+                                            items.push(Item {
+                                                title,
+                                                value: line.trim().to_string(),
+                                                category: category_name.clone(),
+                                                display: effective_display.clone(),
+                                                source: effective_source.clone(),
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -602,6 +688,7 @@ fn process_item_for_display(item: &Item) -> Vec<Item> {
                         value: path_str.to_string(),
                         category: item.category.clone(),
                         display: item.display.clone(),
+                        source: item.source.clone(),
                     });
                 }
             }
@@ -612,6 +699,7 @@ fn process_item_for_display(item: &Item) -> Vec<Item> {
                 value: expanded_path_str,
                 category: item.category.clone(),
                 display: item.display.clone(),
+                source: item.source.clone(),
             }]
         }
     } else {

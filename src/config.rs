@@ -9,9 +9,18 @@ pub enum DisplayMode {
     Picture,
 }
 
+#[derive(Debug, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SourceMode {
+    #[default]
+    Config,
+    Command,
+}
+
 #[derive(Debug, Clone)]
 pub struct Category {
     pub display: Option<DisplayMode>,
+    pub source: Option<SourceMode>,
     pub entries: HashMap<String, String>,
 }
 
@@ -37,6 +46,7 @@ impl<'de> Deserialize<'de> for Category {
                 V: MapAccess<'de>,
             {
                 let mut display = None;
+                let mut source = None;
                 let mut entries = HashMap::new();
 
                 while let Some(key) = map.next_key::<String>()? {
@@ -47,6 +57,12 @@ impl<'de> Deserialize<'de> for Category {
                             }
                             display = Some(map.next_value()?);
                         }
+                        "source" => {
+                            if source.is_some() {
+                                return Err(serde::de::Error::duplicate_field("source"));
+                            }
+                            source = Some(map.next_value()?);
+                        }
                         _ => {
                             let value: String = map.next_value()?;
                             entries.insert(key, value);
@@ -54,7 +70,7 @@ impl<'de> Deserialize<'de> for Category {
                     }
                 }
 
-                Ok(Category { display, entries })
+                Ok(Category { display, source, entries })
             }
         }
 
@@ -65,6 +81,7 @@ impl<'de> Deserialize<'de> for Category {
 #[derive(Debug)]
 pub struct Config {
     pub display: DisplayMode,
+    pub source: SourceMode,
     pub categories: HashMap<String, Category>,
 }
 
@@ -90,6 +107,7 @@ impl<'de> Deserialize<'de> for Config {
                 V: MapAccess<'de>,
             {
                 let mut display = None;
+                let mut source = None;
                 let mut categories = HashMap::new();
 
                 while let Some(key) = map.next_key::<String>()? {
@@ -100,6 +118,12 @@ impl<'de> Deserialize<'de> for Config {
                             }
                             display = Some(map.next_value()?);
                         }
+                        "source" => {
+                            if source.is_some() {
+                                return Err(serde::de::Error::duplicate_field("source"));
+                            }
+                            source = Some(map.next_value()?);
+                        }
                         _ => {
                             let category: Category = map.next_value()?;
                             categories.insert(key, category);
@@ -109,6 +133,7 @@ impl<'de> Deserialize<'de> for Config {
 
                 Ok(Config {
                     display: display.unwrap_or_default(),
+                    source: source.unwrap_or_default(),
                     categories,
                 })
             }

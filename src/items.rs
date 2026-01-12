@@ -1,4 +1,4 @@
-use crate::config::DisplayMode;
+use crate::config::{DisplayMode, SourceMode};
 
 #[derive(Debug, Clone)]
 pub struct Item {
@@ -6,4 +6,5 @@ pub struct Item {
     pub value: String,
     pub category: String,
     pub display: DisplayMode,
+    pub source: SourceMode,
 }
