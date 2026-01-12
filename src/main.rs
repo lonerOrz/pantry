@@ -61,20 +61,17 @@ fn main() {
 }
 
 fn build_ui(app: &Application, args: &Args) {
-    // Load saved window state
     let window_state = WindowState::load();
 
     let window = window::create_main_window(app, args);
 
-    // Set window size from saved state
     window.set_default_size(window_state.width, window_state.height);
 
-    // Restore maximized state if needed
     if window_state.maximized {
         window.maximize();
     }
 
-    let config_path = args.config.as_ref().unwrap(); // Safe to unwrap since we set a default
+    let config_path = args.config.as_ref().unwrap();
 
     let (main_widget, listbox, preview_area_rc_opt) = if matches!(get_config_display_mode(config_path, &args.category), DisplayMode::Picture) {
         let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
@@ -85,7 +82,6 @@ fn build_ui(app: &Application, args: &Args) {
         paned.set_start_child(Some(&scrolled));
 
         let preview_area = preview::PreviewArea::new();
-        // Set expansion properties for preview area
         preview_area.container.set_hexpand(true);
         preview_area.container.set_vexpand(true);
         paned.set_end_child(Some(&preview_area.container));
@@ -95,7 +91,7 @@ fn build_ui(app: &Application, args: &Args) {
         paned.set_resize_end_child(true);
         paned.set_shrink_end_child(false);
 
-        paned.set_position(360); // Default for 1200px window (30%)
+        paned.set_position(360);
 
         let preview_area_rc = std::rc::Rc::new(std::cell::RefCell::new(preview_area));
 
@@ -125,7 +121,6 @@ fn build_ui(app: &Application, args: &Args) {
         let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
         let listbox_clone = listbox.clone();
         listbox.connect_selected_rows_changed(move |_listbox| {
-            // Use glib::timeout_add_local to delay preview update, avoiding UI blocking
             let preview_area_rc_opt_inner = preview_area_rc_opt_clone.clone();
             let listbox_inner = listbox_clone.clone();
             glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
@@ -204,8 +199,6 @@ fn create_search_overlay(child: &impl gtk4::prelude::IsA<gtk4::Widget>) -> (Over
     overlay.add_overlay(&label);
     (overlay, label)
 }
-
-// --- Logic & Events ---
 
 fn setup_filter_func(listbox: &ListBox, query_state: SearchState) {
     listbox.set_filter_func(Box::new(move |row: &ListBoxRow| -> bool {
@@ -445,8 +438,6 @@ fn first_visible_row_after_filter(listbox: &ListBox) -> Option<ListBoxRow> {
     None
 }
 
-// --- Item Loading ---
-
 fn load_items_from_config(
     listbox: &ListBox,
     config_path: &str,
@@ -523,14 +514,12 @@ fn load_items_from_config(
                                 let path = entry.path();
                                 if path.is_file() {
                                     let path_str = path.to_string_lossy();
-                                    if utils::is_image_file(&path_str) {
-                                        paths.push(Item {
-                                            title: format!("{} ({})", path.file_name().unwrap_or_default().to_string_lossy(), item.title),
-                                            value: path_str.to_string(),
-                                            category: item.category.clone(),
-                                            display: item.display.clone(),
-                                        });
-                                    }
+                                    paths.push(Item {
+                                        title: format!("{} ({})", path.file_name().unwrap_or_default().to_string_lossy(), item.title),
+                                        value: path_str.to_string(),
+                                        category: item.category.clone(),
+                                        display: item.display.clone(),
+                                    });
                                 }
                             }
                         }

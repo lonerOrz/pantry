@@ -22,12 +22,12 @@ pub fn create_list_item(title: &str, value: &str) -> ListBoxRow {
     let title_label = Label::new(Some(title));
     title_label.set_xalign(0.0);
     title_label.set_use_markup(true);
-    title_label.set_ellipsize(gtk4::pango::EllipsizeMode::End); // Show ellipsis at the end when text is too long
+    title_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
     let value_label = Label::new(Some(value));
     value_label.set_xalign(0.0);
     value_label.add_css_class("dim-label");
-    value_label.set_ellipsize(gtk4::pango::EllipsizeMode::End); // Show ellipsis at the end when text is too long
-    value_label.set_single_line_mode(true); // Only one line, ellipsize the rest
+    value_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+    value_label.set_single_line_mode(true);
     vbox.append(&title_label);
     vbox.append(&value_label);
     row.set_child(Some(&vbox));

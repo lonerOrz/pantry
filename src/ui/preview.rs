@@ -5,20 +5,17 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::path::PathBuf;
 use std::fs;
-use crate::items::Item; // 导入 Item 结构体
+use crate::items::Item;
 
 #[derive(Clone)]
 pub struct PreviewArea {
     pub container: Grid,
-    image_container: GtkBox,  // 用于存放图片的容器
-    details_label: Label,     // 用于显示图片详细信息
-    details_scrolled: ScrolledWindow, // 用于详细信息的滚动窗口
-    // 使用 Arc<Mutex<Option<String>>> 来跟踪当前正在加载的图片路径
+    image_container: GtkBox,
+    details_label: Label,
+    details_scrolled: ScrolledWindow,
     current_loading_path: Arc<Mutex<Option<String>>>,
-    // 使用 AtomicU64 来存储当前加载任务的 ID，以便取消之前的任务
     current_task_id: Arc<AtomicU64>,
     next_task_id: Arc<AtomicU64>,
-    // 缓存目录路径
     cache_dir: PathBuf,
 }
 
@@ -32,48 +29,39 @@ impl PreviewArea {
         // Create cache directory (if it doesn't exist)
         fs::create_dir_all(&cache_dir).expect("Failed to create cache directory");
 
-        // Create a container to hold the image, allowing better control of image size
         let image_container = GtkBox::new(Orientation::Vertical, 0);
-        image_container.set_vexpand(true);  // Allow vertical expansion
-        image_container.set_hexpand(true);  // Allow horizontal expansion
+        image_container.set_vexpand(true);
+        image_container.set_hexpand(true);
         image_container.set_homogeneous(false);
 
-        // Add: Image details label
         let details_label = Label::new(Some("No image selected"));
-        details_label.set_wrap(false); // Don't wrap lines, allowing horizontal scrolling for long text
-        details_label.set_halign(Align::Start); // Left align
-        details_label.set_ellipsize(gtk4::pango::EllipsizeMode::None); // Don't show ellipsis, allow scrolling
+        details_label.set_wrap(false);
+        details_label.set_halign(Align::Start);
+        details_label.set_ellipsize(gtk4::pango::EllipsizeMode::None);
         details_label.add_css_class("preview-details-label");
 
-        // Create a scroll window to accommodate potentially long details
         let details_scrolled = gtk4::ScrolledWindow::new();
         details_scrolled.set_child(Some(&details_label));
-        details_scrolled.set_vexpand(false); // Don't expand vertical space
-        details_scrolled.set_hscrollbar_policy(gtk4::PolicyType::Automatic); // Horizontal scrollbar auto display
-        details_scrolled.set_vscrollbar_policy(gtk4::PolicyType::Automatic); // Vertical scrollbar auto display
-        details_scrolled.set_size_request(-1, 80); // Fixed height of 80 pixels, -1 means width adapts
-        details_scrolled.add_css_class("preview-details-scrolled"); // Add CSS class
+        details_scrolled.set_vexpand(false);
+        details_scrolled.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
+        details_scrolled.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
+        details_scrolled.set_size_request(-1, 80);
+        details_scrolled.add_css_class("preview-details-scrolled");
 
-        // Important: Set propagate_natural_height and propagate_natural_width for the scroll window
         details_scrolled.set_propagate_natural_height(false);
         details_scrolled.set_propagate_natural_width(false);
 
-        // Create separator
         let separator = gtk4::Separator::new(gtk4::Orientation::Horizontal);
         separator.add_css_class("preview-separator");
 
-        // Create main container using Grid layout
         let container = Grid::new();
         container.set_row_homogeneous(false);
         container.set_column_homogeneous(false);
-        container.set_vexpand(true); // Allow main container to expand
-        container.set_row_spacing(0); // Set row spacing to 0, as we use separator to divide
+        container.set_vexpand(true);
+        container.set_row_spacing(0);
 
-        // Place image container in row 0
         container.attach(&image_container, 0, 0, 1, 1);
-        // Place separator in row 1
         container.attach(&separator, 0, 1, 1, 1);
-        // Place details scroll window in row 2
         container.attach(&details_scrolled, 0, 2, 1, 1);
 
         Self {
@@ -89,13 +77,20 @@ impl PreviewArea {
     }
 
     pub fn update_with_content(&self, item: &Item) {
-        // Check if the value is an image file or text content
-        if crate::utils::is_image_file(&item.value) {
-            // If it's an image file, use the image preview
-            self.update_with_image_content(item);
-        } else {
-            // If it's text content, use the text preview
-            self.update_with_text_content(item);
+        match crate::utils::get_file_type(&item.value) {
+            crate::utils::FileType::Image => {
+                self.update_with_image_content(item);
+            },
+            crate::utils::FileType::Video => {
+                // For now, treat as text content
+                self.update_with_text_content(item);
+            },
+            crate::utils::FileType::Text | crate::utils::FileType::Binary => {
+                self.update_with_text_content(item);
+            },
+            crate::utils::FileType::Other => {
+                self.update_with_text_content(item);
+            }
         }
     }
 
@@ -341,8 +336,8 @@ impl PreviewArea {
 
     fn update_with_text_content(&self, item: &Item) {
         // Prepare value for display - truncate if too long
-        let display_value = if item.value.len() > 100 {
-            format!("{}...", &item.value[..100])
+        let display_value = if item.value.len() > 999 {
+            format!("{}...", &item.value[..999])
         } else {
             item.value.clone()
         };
@@ -363,40 +358,33 @@ impl PreviewArea {
         let adjustment = self.details_scrolled.vadjustment();
         adjustment.set_value(0.0);
 
-        // Clear previous content
         while let Some(child) = self.image_container.first_child() {
             self.image_container.remove(&child);
         }
 
-        // Create a TextView for text content
         let text_view = TextView::new();
         text_view.set_editable(false);
         text_view.set_cursor_visible(false);
-        text_view.set_wrap_mode(gtk4::WrapMode::Word); // Wrap at word boundaries only
+        text_view.set_wrap_mode(gtk4::WrapMode::Word);
         text_view.set_left_margin(10);
         text_view.set_right_margin(10);
         text_view.set_top_margin(10);
         text_view.set_bottom_margin(10);
 
-        // Set the text content
         let buffer = text_view.buffer();
         buffer.set_text(&item.value);
 
-        // Configure the text view to expand properly
         text_view.set_hexpand(true);
         text_view.set_vexpand(true);
 
-        // Wrap the TextView in a ScrolledWindow to allow scrolling
         let scrolled_window = gtk4::ScrolledWindow::new();
         scrolled_window.set_child(Some(&text_view));
         scrolled_window.set_hexpand(true);
         scrolled_window.set_vexpand(true);
 
-        // Enable both horizontal and vertical scrolling
         scrolled_window.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
         scrolled_window.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
 
-        // Add the scrolled window to the container
         self.image_container.append(&scrolled_window);
     }
 
