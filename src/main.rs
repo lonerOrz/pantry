@@ -1,10 +1,10 @@
+use clap::Parser;
 use gtk4::{
-    gdk, glib, prelude::*, Application, ApplicationWindow, EventControllerKey, Label, ListBox,
-    ListBoxRow, Overlay, PropagationPhase, ScrolledWindow, Box as GtkBox, Orientation,
+    gdk, glib, prelude::*, Application, ApplicationWindow, Box as GtkBox, EventControllerKey,
+    Label, ListBox, ListBoxRow, Orientation, Overlay, PropagationPhase, ScrolledWindow,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
-use clap::Parser;
 
 mod config;
 mod items;
@@ -13,13 +13,16 @@ mod utils;
 mod window_state;
 use config::{Config, DisplayMode};
 use items::Item;
-use ui::{window, list, preview};
+use ui::{list, preview, window};
 use window_state::WindowState;
 
 const APP_ID: &str = "io.github.lonerorz.pantry";
 
 #[derive(Parser, Debug)]
-#[command(name = "pantry", about = "A generic selector for various types of entries")]
+#[command(
+    name = "pantry",
+    about = "A generic selector for various types of entries"
+)]
 struct Args {
     /// Configuration file path [default: ~/.config/pantry/config.toml]
     #[arg(short = 'f', long)]
@@ -31,7 +34,7 @@ struct Args {
 
     /// Preview display: text or image (now read from config file, this parameter is deprecated)
     #[arg(long = "preview", hide = true, default_value = "auto")]
-    preview_mode: String,  // "auto", "text", "image"
+    preview_mode: String,
 }
 
 type SearchState = Rc<RefCell<String>>;
@@ -41,7 +44,6 @@ fn get_default_config_path() -> String {
         .unwrap_or_else(|| std::env::current_dir().unwrap())
         .join("pantry");
 
-    // Ensure the config directory exists
     std::fs::create_dir_all(&config_dir).expect("Failed to create config directory");
 
     config_dir.join("config.toml").to_string_lossy().to_string()
@@ -50,7 +52,6 @@ fn get_default_config_path() -> String {
 fn main() {
     let mut args = Args::parse();
 
-    // Set default config path if not provided
     if args.config.is_none() {
         args.config = Some(get_default_config_path());
     }
@@ -73,7 +74,10 @@ fn build_ui(app: &Application, args: &Args) {
 
     let config_path = args.config.as_ref().unwrap();
 
-    let (main_widget, listbox, preview_area_rc_opt) = if matches!(get_config_display_mode(config_path, &args.category), DisplayMode::Picture) {
+    let (main_widget, listbox, preview_area_rc_opt) = if matches!(
+        get_config_display_mode(config_path, &args.category),
+        DisplayMode::Picture
+    ) {
         let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
 
         let listbox = list::create_listbox();
@@ -95,7 +99,11 @@ fn build_ui(app: &Application, args: &Args) {
 
         let preview_area_rc = std::rc::Rc::new(std::cell::RefCell::new(preview_area));
 
-        (paned.upcast::<gtk4::Widget>(), listbox, Some(preview_area_rc))
+        (
+            paned.upcast::<gtk4::Widget>(),
+            listbox,
+            Some(preview_area_rc),
+        )
     } else {
         let layout = GtkBox::new(Orientation::Vertical, 0);
         let listbox = list::create_listbox();
@@ -111,13 +119,26 @@ fn build_ui(app: &Application, args: &Args) {
     let search_query: SearchState = Rc::new(RefCell::new(String::new()));
     setup_filter_func(&listbox, search_query.clone());
 
-    setup_keyboard_controller(&window, &listbox, search_query, search_label, args, preview_area_rc_opt.clone());
+    setup_keyboard_controller(
+        &window,
+        &listbox,
+        search_query,
+        search_label,
+        args,
+        preview_area_rc_opt.clone(),
+    );
 
-    load_items_from_config(&listbox, config_path, &args.category, preview_area_rc_opt.clone());
+    load_items_from_config(
+        &listbox,
+        config_path,
+        &args.category,
+        preview_area_rc_opt.clone(),
+    );
 
-
-    // Add ListBox selection change listener to update preview
-    if matches!(get_config_display_mode(config_path, &args.category), DisplayMode::Picture) {
+    if matches!(
+        get_config_display_mode(config_path, &args.category),
+        DisplayMode::Picture
+    ) {
         let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
         let listbox_clone = listbox.clone();
         listbox.connect_selected_rows_changed(move |_listbox| {
@@ -130,7 +151,10 @@ fn build_ui(app: &Application, args: &Args) {
         });
     }
 
-    if matches!(get_config_display_mode(config_path, &args.category), DisplayMode::Picture) {
+    if matches!(
+        get_config_display_mode(config_path, &args.category),
+        DisplayMode::Picture
+    ) {
         if let Some(paned_widget) = main_widget.downcast_ref::<gtk4::Paned>() {
             let window_clone = window.clone();
             let paned_widget_clone = paned_widget.clone();
@@ -169,7 +193,10 @@ fn get_config_display_mode(config_path: &str, category_filter: &Option<String>) 
         if let Ok(config) = toml::from_str::<Config>(&content) {
             if let Some(category) = category_filter {
                 if let Some(category_config) = config.categories.get(category) {
-                    return category_config.display.clone().unwrap_or(config.display.clone());
+                    return category_config
+                        .display
+                        .clone()
+                        .unwrap_or(config.display.clone());
                 }
             }
             return config.display;
@@ -192,7 +219,7 @@ fn create_search_overlay(child: &impl gtk4::prelude::IsA<gtk4::Widget>) -> (Over
     overlay.set_child(Some(child));
     let label = Label::new(None);
     label.add_css_class("app-notification");
-    label.add_css_class("hidden"); // Initially hidden
+    label.add_css_class("hidden");
     label.set_halign(gtk4::Align::Center);
     label.set_valign(gtk4::Align::End);
     label.set_margin_bottom(30);
@@ -211,16 +238,12 @@ fn setup_filter_func(listbox: &ListBox, query_state: SearchState) {
             let query_lower = query.to_lowercase();
             let title_lower = item.title.to_lowercase();
             let value_lower = item.value.to_lowercase();
-            let matches = if title_lower == query_lower || value_lower == query_lower {
-                true
-            } else if title_lower.contains(&query_lower) || value_lower.contains(&query_lower) {
-                true
-            } else if fuzzy_match(&title_lower, &query_lower) || fuzzy_match(&value_lower, &query_lower) {
-                true
-            } else {
-                false
-            };
-            matches
+            title_lower == query_lower
+                || value_lower == query_lower
+                || title_lower.contains(&query_lower)
+                || value_lower.contains(&query_lower)
+                || fuzzy_match(&title_lower, &query_lower)
+                || fuzzy_match(&value_lower, &query_lower)
         } else {
             false
         }
@@ -247,15 +270,17 @@ fn setup_keyboard_controller(
     query_state: SearchState,
     search_label: Label,
     args: &Args,
-    preview_area_rc_opt: Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>, // Modify parameter type
+    preview_area_rc_opt: Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>,
 ) {
     let controller = EventControllerKey::new();
     controller.set_propagation_phase(PropagationPhase::Capture);
     let listbox = listbox.clone();
     let search_label = search_label.clone();
-    let config_path = args.config.as_ref().unwrap(); // Safe to unwrap since we set a default
-    let preview_enabled = matches!(get_config_display_mode(config_path, &args.category), DisplayMode::Picture);
-    // let preview_area_rc = preview_area_opt.map(|p| std::rc::Rc::new(std::cell::RefCell::new(p))); // 移除此行，因为现在直接接收 Rc 了
+    let config_path = args.config.as_ref().unwrap();
+    let preview_enabled = matches!(
+        get_config_display_mode(config_path, &args.category),
+        DisplayMode::Picture
+    );
     let preview_area_rc = preview_area_rc_opt;
 
     controller.connect_key_pressed(move |_, keyval, _, _| {
@@ -269,25 +294,32 @@ fn setup_keyboard_controller(
         }
 
         // If in picture mode, handle selection changes to update preview
-        if preview_enabled {
-            if keyval == gdk::Key::Down || keyval == gdk::Key::Up ||
-               keyval == gdk::Key::Tab || keyval == gdk::Key::ISO_Left_Tab {
-                // Delay preview update, wait for selection update to complete
-                let listbox_clone = listbox.clone();
-                let preview_area_rc_clone = preview_area_rc.clone();
-                glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
-                    update_preview(&listbox_clone, &preview_area_rc_clone);
-                    glib::ControlFlow::Break
-                });
-            }
+        if preview_enabled
+            && (keyval == gdk::Key::Down
+                || keyval == gdk::Key::Up
+                || keyval == gdk::Key::Tab
+                || keyval == gdk::Key::ISO_Left_Tab)
+        {
+            // Delay preview update, wait for selection update to complete
+            let listbox_clone = listbox.clone();
+            let preview_area_rc_clone = preview_area_rc.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
+                update_preview(&listbox_clone, &preview_area_rc_clone);
+                glib::ControlFlow::Break
+            });
         }
 
-        handle_search_input(keyval, &query_state, &listbox, &search_label, &preview_area_rc)
+        handle_search_input(
+            keyval,
+            &query_state,
+            &listbox,
+            &search_label,
+            &preview_area_rc,
+        )
     });
     window.add_controller(controller);
 }
 
-// 用于防抖的全局变量
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -295,8 +327,10 @@ lazy_static::lazy_static! {
     static ref LAST_PREVIEW_UPDATE: Mutex<u128> = Mutex::new(0);
 }
 
-fn update_preview(listbox: &ListBox, preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>) {
-    // 防抖：如果上次更新时间距离现在不到50毫秒，则不更新
+fn update_preview(
+    listbox: &ListBox,
+    preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>,
+) {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis())
@@ -305,7 +339,7 @@ fn update_preview(listbox: &ListBox, preview_area_rc_opt: &Option<std::rc::Rc<st
     {
         let mut last_update = LAST_PREVIEW_UPDATE.lock().unwrap();
         if now - *last_update < 50 {
-            return; // 距离上次更新不足50毫秒，跳过本次更新
+            return;
         }
         *last_update = now;
     }
@@ -327,7 +361,12 @@ fn update_preview(listbox: &ListBox, preview_area_rc_opt: &Option<std::rc::Rc<st
     }
 }
 
-fn clear_search(query_state: &SearchState, listbox: &ListBox, label: &Label, preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>) {
+fn clear_search(
+    query_state: &SearchState,
+    listbox: &ListBox,
+    label: &Label,
+    preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>,
+) {
     query_state.borrow_mut().clear();
     label.add_css_class("hidden");
     listbox.invalidate_filter();
@@ -339,14 +378,11 @@ fn handle_selection(listbox: &ListBox) {
         if let Some(item_ptr) = unsafe { selected_row.data::<Item>("item") } {
             let item = unsafe { &*item_ptr.as_ptr() };
 
-            // 直接输出值到标准输出
             print!("{}", item.value);
 
-            // 确保立即刷新输出（对管道特别重要）
             use std::io::{self, Write};
             let _ = io::stdout().flush();
 
-            // 保存当前窗口状态
             if let Some(window) = listbox.root().and_downcast::<ApplicationWindow>() {
                 save_current_window_state(&window);
                 window.close();
@@ -356,12 +392,8 @@ fn handle_selection(listbox: &ListBox) {
 }
 
 fn save_current_window_state(window: &ApplicationWindow) {
-    // Check if window is maximized
     let maximized = window.is_maximized();
-
-    // Get the default size to save
     let (width, height) = window.default_size();
-
     let state = WindowState {
         width,
         height,
@@ -377,7 +409,7 @@ fn handle_search_input(
     query_state: &SearchState,
     listbox: &ListBox,
     label: &Label,
-    preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>, // 新增参数
+    preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>,
 ) -> glib::Propagation {
     let (should_invalidate, current_text) = {
         let mut query = query_state.borrow_mut();
@@ -401,13 +433,16 @@ fn handle_search_input(
             label.remove_css_class("hidden");
         }
         listbox.invalidate_filter();
-        update_selection_after_filter(listbox, preview_area_rc_opt); // 传递 preview_area_rc_opt
+        update_selection_after_filter(listbox, preview_area_rc_opt);
         return glib::Propagation::Stop;
     }
     glib::Propagation::Proceed
 }
 
-fn update_selection_after_filter(listbox: &ListBox, preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>) {
+fn update_selection_after_filter(
+    listbox: &ListBox,
+    preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>,
+) {
     let mut needs_reselect = true;
     if let Some(selected) = listbox.selected_row() {
         if selected.is_child_visible() {
@@ -471,7 +506,10 @@ fn load_items_from_config(
         // If a category is specified, load only items from that category, otherwise load only categories with the same display mode as the global default
         if let Some(ref category) = category_filter {
             if let Some(category_config) = config.categories.get(category) {
-                let effective_display = category_config.display.clone().unwrap_or(config.display.clone());
+                let effective_display = category_config
+                    .display
+                    .clone()
+                    .unwrap_or(config.display.clone());
                 for (key, value) in &category_config.entries {
                     items.push(Item {
                         title: key.clone(),
@@ -484,7 +522,10 @@ fn load_items_from_config(
         } else {
             // Load items only from categories that match the global default display mode
             for (category_name, category_config) in &config.categories {
-                let effective_display = category_config.display.clone().unwrap_or(config.display.clone());
+                let effective_display = category_config
+                    .display
+                    .clone()
+                    .unwrap_or(config.display.clone());
                 if effective_display == config.display {
                     for (key, value) in &category_config.entries {
                         items.push(Item {
@@ -501,41 +542,7 @@ fn load_items_from_config(
         use rayon::prelude::*;
         let all_paths: Vec<_> = items
             .par_iter()
-            .flat_map(|item| {
-                if let DisplayMode::Picture = item.display {
-                    let expanded_path = utils::expand_tilde(&item.value);
-                    let expanded_path_str = expanded_path.to_string_lossy().to_string();
-
-                    if utils::is_path_directory(&expanded_path_str) {
-                        use walkdir::WalkDir;
-                        let mut paths = Vec::new();
-                        for entry in WalkDir::new(&expanded_path_str).follow_links(true) {
-                            if let Ok(entry) = entry {
-                                let path = entry.path();
-                                if path.is_file() {
-                                    let path_str = path.to_string_lossy();
-                                    paths.push(Item {
-                                        title: format!("{} ({})", path.file_name().unwrap_or_default().to_string_lossy(), item.title),
-                                        value: path_str.to_string(),
-                                        category: item.category.clone(),
-                                        display: item.display.clone(),
-                                    });
-                                }
-                            }
-                        }
-                        paths
-                    } else {
-                        vec![Item {
-                            title: item.title.clone(),
-                            value: expanded_path_str,
-                            category: item.category.clone(),
-                            display: item.display.clone(),
-                        }]
-                    }
-                } else {
-                    vec![item.clone()]
-                }
-            })
+            .flat_map(process_item_for_display)
             .collect();
 
         let items = all_paths;
@@ -564,6 +571,50 @@ fn load_items_from_config(
 
 fn add_item_to_ui(listbox: &ListBox, item: Item) {
     let row = list::create_list_item(&item.title, &item.value);
-    unsafe { row.set_data("item", item); }
+    unsafe {
+        row.set_data("item", item);
+    }
     listbox.append(&row);
+}
+
+fn process_item_for_display(item: &Item) -> Vec<Item> {
+    if let DisplayMode::Picture = item.display {
+        let expanded_path = utils::expand_tilde(&item.value);
+        let expanded_path_str = expanded_path.to_string_lossy().to_string();
+
+        if utils::is_path_directory(&expanded_path_str) {
+            use walkdir::WalkDir;
+            let mut paths = Vec::new();
+            for entry in WalkDir::new(&expanded_path_str)
+                .follow_links(true)
+                .into_iter()
+                .flatten()
+            {
+                let path = entry.path();
+                if path.is_file() {
+                    let path_str = path.to_string_lossy();
+                    paths.push(Item {
+                        title: format!(
+                            "{} ({})",
+                            path.file_name().unwrap_or_default().to_string_lossy(),
+                            item.title
+                        ),
+                        value: path_str.to_string(),
+                        category: item.category.clone(),
+                        display: item.display.clone(),
+                    });
+                }
+            }
+            paths
+        } else {
+            vec![Item {
+                title: item.title.clone(),
+                value: expanded_path_str,
+                category: item.category.clone(),
+                display: item.display.clone(),
+            }]
+        }
+    } else {
+        vec![item.clone()]
+    }
 }

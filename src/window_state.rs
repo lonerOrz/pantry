@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WindowState {
@@ -29,13 +29,11 @@ impl WindowState {
             }
         }
 
-        // Return default state if loading fails
         WindowState::default()
     }
 
     pub fn save(&self) {
         if let Some(config_path) = Self::get_config_path() {
-            // Create parent directory if it doesn't exist
             if let Some(parent) = config_path.parent() {
                 let _ = fs::create_dir_all(parent);
             }
@@ -47,7 +45,6 @@ impl WindowState {
     }
 
     fn get_config_path() -> Option<PathBuf> {
-        dirs::config_dir()
-            .map(|config_dir| config_dir.join("pantry").join("window-state.toml"))
+        dirs::config_dir().map(|config_dir| config_dir.join("pantry").join("window-state.toml"))
     }
 }

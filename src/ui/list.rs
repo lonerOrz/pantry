@@ -1,8 +1,5 @@
-use gtk4::{
-    ListBox, ListBoxRow, Orientation, Box as GtkBox, Label,
-    SelectionMode,
-};
 use gtk4::prelude::*;
+use gtk4::{Box as GtkBox, Label, ListBox, ListBoxRow, Orientation, SelectionMode};
 
 pub fn create_listbox() -> ListBox {
     ListBox::builder()

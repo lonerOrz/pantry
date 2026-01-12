@@ -1,17 +1,12 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum DisplayMode {
+    #[default]
     Text,
     Picture,
-}
-
-impl Default for DisplayMode {
-    fn default() -> Self {
-        DisplayMode::Text
-    }
 }
 
 #[derive(Debug, Clone)]

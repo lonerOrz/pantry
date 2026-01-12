@@ -1,8 +1,5 @@
-use gtk4::{
-    Application, ApplicationWindow, CssProvider,
-    prelude::WidgetExt,
-};
 use crate::Args;
+use gtk4::{prelude::WidgetExt, Application, ApplicationWindow, CssProvider};
 
 pub fn create_main_window(app: &Application, _args: &Args) -> ApplicationWindow {
     let window = ApplicationWindow::builder()
@@ -10,7 +7,7 @@ pub fn create_main_window(app: &Application, _args: &Args) -> ApplicationWindow 
         .title("pantry")
         .default_width(1200)
         .default_height(800)
-        .resizable(true)  // Allow window resizing
+        .resizable(true)
         .modal(true)
         .decorated(false)
         .build();
