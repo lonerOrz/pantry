@@ -17,8 +17,8 @@ use crate::window_state::WindowState;
 )]
 pub struct Args {
     /// Configuration file path [default: ~/.config/pantry/config.toml]
-    #[arg(short = 'f', long)]
-    pub config: Option<String>,
+    #[arg(short = 'f', long, default_value_t = crate::app::app::get_default_config_path())]
+    pub config: String,
 
     /// Specify the category to load (load all categories if not specified)
     #[arg(short = 'c', long = "category")]
@@ -109,7 +109,7 @@ impl PantryApp {
 
                 self.load_items_from_config(
                     &listbox,
-                    self.args.config.as_ref().unwrap(),
+                    &self.args.config,
                     &self.args.category,
                     &self.args.display,
                     preview_area_rc_opt.clone(),

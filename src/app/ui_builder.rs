@@ -195,10 +195,8 @@ impl UiBuilder {
             window.maximize();
         }
 
-        let config_path = args.config.as_ref().unwrap();
-
         let (main_widget, listbox, preview_area_rc_opt) = if matches!(
-            get_config_display_mode(config_path, &args.category, &args.display),
+            get_config_display_mode(&args.config, &args.category, &args.display),
             DisplayMode::Picture
         ) {
             let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
