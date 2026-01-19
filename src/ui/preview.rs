@@ -88,6 +88,14 @@ impl PreviewArea {
     }
 
     fn update_with_image_content(&self, item: &Item) {
+        // Check if the value is actually a file path that exists
+        let path = std::path::Path::new(&item.value);
+        if !path.exists() || !path.is_file() {
+            // Value is not a valid file path, treat as text content
+            self.update_with_text_content(item);
+            return;
+        }
+
         let image_path = &item.value;
         let expanded_path = crate::utils::expand_tilde(image_path);
         let path_str = expanded_path.to_string_lossy().to_string();
