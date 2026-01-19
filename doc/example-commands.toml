@@ -32,8 +32,14 @@ display = "picture"
 [clip]
 display = "picture"
 source = "command"
-
 [clip.entries]
 "test_source" = """
 echo -e "Option 1\nOption 2\nOption 3"
 """
+
+
+[cliphist]
+display = "picture"
+source = "dynamic"
+[cliphist.entries]
+"cliphist list | awk '{print $1 \"\\t\" substr($0, index($0,$2))}' | head -n 5" = "cliphist decode {}"

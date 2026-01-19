@@ -15,6 +15,7 @@ pub enum SourceMode {
     #[default]
     Config,
     Command,
+    Dynamic,
 }
 
 #[derive(Debug, Clone)]

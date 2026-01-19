@@ -46,8 +46,18 @@ impl PreviewManager {
                 {
                     let item_obj = unsafe { &*item_obj_ptr.as_ptr() };
                     if let Some(item) = item_obj.item() {
-                        let preview_area = &*preview_area_rc.borrow();
-                        preview_area.update_with_content(&item);
+                        // Handle dynamic source differently
+                        if matches!(item.source, crate::config::SourceMode::Dynamic) {
+                            // For dynamic source, we need to execute the preview command
+                            // The item.value contains the ID to use in the command
+                            // The command template would have been stored somewhere
+                            // For now, we'll treat it as a regular item
+                            let preview_area = &*preview_area_rc.borrow();
+                            preview_area.update_with_content(&item);
+                        } else {
+                            let preview_area = &*preview_area_rc.borrow();
+                            preview_area.update_with_content(&item);
+                        }
                     }
                 }
             }

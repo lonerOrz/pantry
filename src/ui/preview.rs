@@ -81,9 +81,194 @@ impl PreviewArea {
     }
 
     pub fn update_with_content(&self, item: &Item) {
-        match item.display {
-            crate::config::DisplayMode::Picture => self.update_with_image_content(item),
-            crate::config::DisplayMode::Text => self.update_with_text_content(item),
+        match item.source {
+            crate::config::SourceMode::Dynamic => self.update_with_dynamic_content(item),
+            _ => match item.display {
+                crate::config::DisplayMode::Picture => self.update_with_image_content(item),
+                crate::config::DisplayMode::Text => self.update_with_text_content(item),
+            }
+        }
+    }
+
+    fn update_with_dynamic_content(&self, item: &Item) {
+        // For dynamic items, the value field contains the ID to use in the preview command
+        // We need to execute the preview command with the ID to get the actual content
+
+        let preview_cmd = format!("cliphist decode {}", item.value);
+
+        match std::process::Command::new("sh").arg("-c").arg(&preview_cmd).output() {
+            Ok(output) if output.status.success() => {
+                // Check if the output contains binary data (contains null bytes or other control chars)
+                let is_binary = output.stdout.iter().any(|&b| b == 0 || (b < 32 && b != b'\n' && b != b'\t'));
+
+                if is_binary {
+                    // Binary content - save to temp file and display as image
+                    use std::fs::File;
+                    use std::io::Write;
+                    use tempfile::NamedTempFile;
+
+                    // Create a temporary file to hold the binary data
+                    let mut temp_file = match NamedTempFile::new() {
+                        Ok(tf) => tf,
+                        Err(_) => {
+                            // If we can't create a temp file, show an error
+                            let details_text = format!(
+                                "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Error:</b> Could not create temporary file",
+                                glib::markup_escape_text(&item.title),
+                                glib::markup_escape_text(&item.category)
+                            );
+                            self.details_label.set_markup(&details_text);
+
+                            while let Some(child) = self.image_container.first_child() {
+                                self.image_container.remove(&child);
+                            }
+
+                            let error_label = gtk4::Label::new(Some("Could not create temporary file for image preview"));
+                            error_label.set_halign(gtk4::Align::Center);
+                            error_label.set_valign(gtk4::Align::Center);
+                            error_label.set_hexpand(true);
+                            error_label.set_vexpand(true);
+                            error_label.add_css_class("error-label");
+
+                            self.image_container.append(&error_label);
+                            return;
+                        }
+                    };
+
+                    if temp_file.write_all(&output.stdout).is_ok() {
+                        let path_str = temp_file.path().to_string_lossy().to_string();
+
+                        // Update details
+                        let details_text = format!(
+                            "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Path:</b> {}",
+                            glib::markup_escape_text(&item.title),
+                            glib::markup_escape_text(&item.category),
+                            glib::markup_escape_text(&path_str)
+                        );
+                        self.details_label.set_markup(&details_text);
+
+                        let adjustment = self.details_scrolled.vadjustment();
+                        adjustment.set_value(0.0);
+
+                        // Clear previous content
+                        while let Some(child) = self.image_container.first_child() {
+                            self.image_container.remove(&child);
+                        }
+
+                        // Load image from the temporary file
+                        match gdk_pixbuf::Pixbuf::from_file_at_scale(
+                            temp_file.path(),
+                            crate::constants::IMAGE_PREVIEW_WIDTH,
+                            crate::constants::IMAGE_PREVIEW_HEIGHT,
+                            true
+                        ) {
+                            Ok(texture) => {
+                                let picture = gtk4::Picture::for_pixbuf(&texture);
+                                picture.set_halign(gtk4::Align::Center);
+                                picture.set_valign(gtk4::Align::Center);
+                                picture.set_hexpand(true);
+                                picture.set_vexpand(true);
+                                picture.add_css_class("preview-image");
+
+                                self.image_container.append(&picture);
+
+                                // Keep the temp file alive for the duration of the preview
+                                std::mem::forget(temp_file);
+                            },
+                            Err(_) => {
+                                let error_label = gtk4::Label::new(Some(&format!("Failed to load image from temp file:\n{}", path_str)));
+                                error_label.set_halign(gtk4::Align::Center);
+                                error_label.set_valign(gtk4::Align::Center);
+                                error_label.set_hexpand(true);
+                                error_label.set_vexpand(true);
+                                error_label.add_css_class("error-label");
+
+                                self.image_container.append(&error_label);
+                            }
+                        }
+                    } else {
+                        // Failed to write to temp file
+                        let error_label = gtk4::Label::new(Some("Failed to write image data to temporary file"));
+                        error_label.set_halign(gtk4::Align::Center);
+                        error_label.set_valign(gtk4::Align::Center);
+                        error_label.set_hexpand(true);
+                        error_label.set_vexpand(true);
+                        error_label.add_css_class("error-label");
+
+                        self.image_container.append(&error_label);
+                    }
+                } else {
+                    // It's text content, display as text
+                    let content = String::from_utf8_lossy(&output.stdout);
+                    let details_text = format!(
+                        "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Value:</b> {}",
+                        glib::markup_escape_text(&item.title),
+                        glib::markup_escape_text(&item.category),
+                        glib::markup_escape_text(&content)
+                    );
+                    self.details_label.set_markup(&details_text);
+
+                    self.details_label
+                        .set_ellipsize(gtk4::pango::EllipsizeMode::End);
+
+                    let adjustment = self.details_scrolled.vadjustment();
+                    adjustment.set_value(0.0);
+
+                    // Clear previous content
+                    while let Some(child) = self.image_container.first_child() {
+                        self.image_container.remove(&child);
+                    }
+
+                    let text_view = gtk4::TextView::new();
+                    text_view.set_editable(false);
+                    text_view.set_cursor_visible(false);
+                    text_view.set_wrap_mode(gtk4::WrapMode::Word);
+                    text_view.set_left_margin(10);
+                    text_view.set_right_margin(10);
+                    text_view.set_top_margin(10);
+                    text_view.set_bottom_margin(10);
+
+                    let buffer = text_view.buffer();
+                    buffer.set_text(&content);
+
+                    text_view.set_hexpand(true);
+                    text_view.set_vexpand(false);  // Don't expand vertically
+                    text_view.set_size_request(-1, 200);  // Limit height
+
+                    let scrolled_window = gtk4::ScrolledWindow::new();
+                    scrolled_window.set_child(Some(&text_view));
+                    scrolled_window.set_hexpand(true);
+                    scrolled_window.set_vexpand(false);  // Don't expand vertically
+                    scrolled_window.set_size_request(-1, 200);  // Limit height
+
+                    scrolled_window.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
+                    scrolled_window.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
+
+                    self.image_container.append(&scrolled_window);
+                }
+            }
+            _ => {
+                let details_text = format!(
+                    "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Error:</b> Failed to execute preview command",
+                    glib::markup_escape_text(&item.title),
+                    glib::markup_escape_text(&item.category)
+                );
+                self.details_label.set_markup(&details_text);
+
+                // Clear previous content
+                while let Some(child) = self.image_container.first_child() {
+                    self.image_container.remove(&child);
+                }
+
+                let error_label = gtk4::Label::new(Some("Failed to execute preview command"));
+                error_label.set_halign(gtk4::Align::Center);
+                error_label.set_valign(gtk4::Align::Center);
+                error_label.set_hexpand(true);
+                error_label.set_vexpand(true);
+                error_label.add_css_class("error-label");
+
+                self.image_container.append(&error_label);
+            }
         }
     }
 

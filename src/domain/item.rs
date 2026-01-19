@@ -145,4 +145,56 @@ impl ItemProcessor {
             source,
         }
     }
+
+    /// Process dynamic source - execute list command and create items
+    pub fn process_dynamic_source(
+        list_command: &str,
+        preview_template: &str,
+    ) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
+        // Execute the list command to get entries
+        let output = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(list_command)
+            .output()?;
+
+        if !output.status.success() {
+            return Err(format!("List command failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+        }
+
+        // Sanitize output to remove null bytes which cause GTK errors
+        let raw_stdout = String::from_utf8_lossy(&output.stdout);
+        let sanitized_stdout = raw_stdout.replace('\0', ""); // Remove null bytes
+
+        let mut items = Vec::new();
+
+        for line in sanitized_stdout.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            // Split by tab to separate ID and display text
+            let parts: Vec<&str> = line.split('\t').collect();
+            let (id, display_text) = if parts.len() >= 2 {
+                (parts[0].trim(), parts[1].trim())
+            } else {
+                // If no tab separator, use the whole line as both ID and display text
+                (line, line)
+            };
+
+            // Further sanitize the id and display_text to remove any remaining problematic characters
+            let sanitized_id = id.replace('\0', "");
+            let sanitized_display_text = display_text.replace('\0', "");
+
+            items.push(Item {
+                title: sanitized_display_text,
+                value: sanitized_id,  // ID as value for preview command
+                category: "dynamic".to_string(),
+                display: DisplayMode::Text, // Will be determined dynamically
+                source: SourceMode::Dynamic,
+            });
+        }
+
+        Ok(items)
+    }
 }

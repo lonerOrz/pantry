@@ -233,6 +233,17 @@ impl PantryApp {
                                 }
                             }
                         }
+                        SourceMode::Dynamic => {
+                            // Dynamic mode: execute list command to get entries, template for preview
+                            for (list_cmd, preview_template) in &category_config.entries {
+                                if let Ok(dynamic_items) = crate::domain::item::ItemProcessor::process_dynamic_source(
+                                    list_cmd,
+                                    preview_template,
+                                ) {
+                                    items.extend(dynamic_items);
+                                }
+                            }
+                        }
                     }
                 }
             } else {
@@ -293,6 +304,17 @@ impl PantryApp {
                                                 });
                                             }
                                         }
+                                    }
+                                }
+                            }
+                            SourceMode::Dynamic => {
+                                // Dynamic mode: execute list command to get entries, template for preview
+                                for (list_cmd, preview_template) in &category_config.entries {
+                                    if let Ok(dynamic_items) = crate::domain::item::ItemProcessor::process_dynamic_source(
+                                        list_cmd,
+                                        preview_template,
+                                    ) {
+                                        items.extend(dynamic_items);
                                     }
                                 }
                             }
