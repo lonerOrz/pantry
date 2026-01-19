@@ -88,14 +88,7 @@ fn build_ui(app: &Application, args: &Args) {
         }
 
         // 根据命令行参数或默认值确定显示模式
-        let display_mode = if let Some(display_str) = &args.display {
-            match display_str.as_str() {
-                "picture" => DisplayMode::Picture,
-                _ => DisplayMode::Text,
-            }
-        } else {
-            DisplayMode::Text // 默认为文本模式
-        };
+        let display_mode = resolve_display_mode(&args.display, &None, &DisplayMode::Text);
 
         let (main_widget, listbox, preview_area_rc_opt) = if matches!(display_mode, DisplayMode::Picture) {
             let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
@@ -341,7 +334,12 @@ fn build_ui(app: &Application, args: &Args) {
     window.present();
 }
 
-fn get_config_display_mode(config_path: &str, category_filter: &Option<String>, display_arg: &Option<String>) -> DisplayMode {
+// 统一处理显示模式的优先级：命令行 > 类别设置 > 全局设置 > 默认值
+fn resolve_display_mode(
+    display_arg: &Option<String>,
+    category_display: &Option<DisplayMode>,
+    global_display: &DisplayMode,
+) -> DisplayMode {
     // 优先使用命令行参数
     if let Some(display_str) = display_arg {
         match display_str.as_str() {
@@ -351,22 +349,31 @@ fn get_config_display_mode(config_path: &str, category_filter: &Option<String>, 
         }
     }
 
+    // 其次使用类别设置
+    if let Some(cat_display) = category_display {
+        return cat_display.clone();
+    }
+
+    // 然后使用全局设置
+    global_display.clone()
+}
+
+fn get_config_display_mode(config_path: &str, category_filter: &Option<String>, display_arg: &Option<String>) -> DisplayMode {
     if let Ok(content) = std::fs::read_to_string(config_path) {
         if let Ok(config) = toml::from_str::<Config>(&content) {
             if let Some(category) = category_filter {
                 if let Some(category_config) = config.categories.get(category) {
-                    // 命令行参数优先级最高，已经在上面处理了
-                    // 如果没有命令行参数，则使用类别设置，否则使用全局设置
-                    return category_config
-                        .display
-                        .clone()
-                        .unwrap_or(config.display.clone());
+                    return resolve_display_mode(
+                        display_arg,
+                        &category_config.display,
+                        &config.display
+                    );
                 }
             }
-            return config.display;
+            return resolve_display_mode(display_arg, &None, &config.display);
         }
     }
-    DisplayMode::Text
+    resolve_display_mode(display_arg, &None, &DisplayMode::Text)
 }
 
 // --- UI Components ---
@@ -682,22 +689,12 @@ fn load_items_from_config(
         // If a category is specified, load only items from that category, otherwise load only categories with the same display mode as the global default
         if let Some(ref category) = category_filter {
             if let Some(category_config) = config.categories.get(category) {
-                // 优先使用命令行参数指定的显示模式
-                let effective_display = if let Some(display_str) = &display_arg {
-                    match display_str.as_str() {
-                        "picture" => DisplayMode::Picture,
-                        "text" => DisplayMode::Text,
-                        _ => category_config
-                            .display
-                            .clone()
-                            .unwrap_or(config.display.clone()),
-                    }
-                } else {
-                    category_config
-                        .display
-                        .clone()
-                        .unwrap_or(config.display.clone())
-                };
+                // 使用统一的显示模式解析函数
+                let effective_display = resolve_display_mode(
+                    &display_arg,
+                    &category_config.display,
+                    &config.display
+                );
                 let effective_source = category_config
                     .source
                     .clone()
@@ -746,22 +743,12 @@ fn load_items_from_config(
         } else {
             // Load items only from categories that match the global default display mode
             for (category_name, category_config) in &config.categories {
-                // 优先使用命令行参数指定的显示模式
-                let effective_display = if let Some(display_str) = &display_arg {
-                    match display_str.as_str() {
-                        "picture" => DisplayMode::Picture,
-                        "text" => DisplayMode::Text,
-                        _ => category_config
-                            .display
-                            .clone()
-                            .unwrap_or(config.display.clone()),
-                    }
-                } else {
-                    category_config
-                        .display
-                        .clone()
-                        .unwrap_or(config.display.clone())
-                };
+                // 使用统一的显示模式解析函数
+                let effective_display = resolve_display_mode(
+                    &display_arg,
+                    &category_config.display,
+                    &config.display
+                );
                 let effective_source = category_config
                     .source
                     .clone()
