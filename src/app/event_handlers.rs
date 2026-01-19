@@ -1,10 +1,8 @@
+use crate::app::app::Args;
+use crate::app::preview_manager::PreviewManager;
 use gtk4::{
     prelude::*, ApplicationWindow, EventControllerKey, Label, ListBox, ListBoxRow, PropagationPhase,
 };
-use crate::config::{get_config_display_mode, DisplayMode};
-use crate::app::app::Args;
-use crate::app::preview_manager::PreviewManager;
-use crate::domain::item::Item;
 
 pub struct EventHandler;
 
@@ -15,7 +13,9 @@ impl EventHandler {
         query_state: crate::ui::search::SearchState,
         search_label: Label,
         args: &Args,
-        preview_area_rc_opt: Option<std::rc::Rc<std::cell::RefCell<crate::ui::preview::PreviewArea>>>,
+        preview_area_rc_opt: Option<
+            std::rc::Rc<std::cell::RefCell<crate::ui::preview::PreviewArea>>,
+        >,
     ) {
         let controller = EventControllerKey::new();
         controller.set_propagation_phase(PropagationPhase::Capture);
@@ -66,7 +66,9 @@ impl EventHandler {
 // 独立函数，用于处理 UI 事件，避免生命周期问题
 pub fn handle_selection(listbox: &ListBox) {
     if let Some(selected_row) = listbox.selected_row() {
-        if let Some(item_obj_ptr) = unsafe { selected_row.data::<crate::app::item_object::ItemObject>("item") } {
+        if let Some(item_obj_ptr) =
+            unsafe { selected_row.data::<crate::app::item_object::ItemObject>("item") }
+        {
             let item_obj = unsafe { &*item_obj_ptr.as_ptr() };
             if let Some(item) = item_obj.item() {
                 print!("{}", item.value);

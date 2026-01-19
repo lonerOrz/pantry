@@ -4,9 +4,8 @@ use gtk4::{ApplicationWindow, EventControllerKey, Label, ListBox, ListBoxRow};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::domain::item::Item;
-use crate::ui::preview::PreviewArea;
 use crate::app::item_object::ItemObject;
+use crate::ui::preview::PreviewArea;
 
 /// 键盘控制器
 pub struct KeyboardController {
@@ -68,10 +67,13 @@ impl KeyboardController {
                 // 延迟预览更新，等待选择更新完成
                 let listbox_clone = listbox.clone();
                 let preview_area_rc_clone = preview_area_rc.clone();
-                glib::timeout_add_local(std::time::Duration::from_millis(crate::constants::SELECTION_UPDATE_DELAY_MS), move || {
-                    Self::update_preview(&listbox_clone, &preview_area_rc_clone);
-                    glib::ControlFlow::Break
-                });
+                glib::timeout_add_local(
+                    std::time::Duration::from_millis(crate::constants::SELECTION_UPDATE_DELAY_MS),
+                    move || {
+                        Self::update_preview(&listbox_clone, &preview_area_rc_clone);
+                        glib::ControlFlow::Break
+                    },
+                );
             }
 
             Self::handle_search_input(
@@ -149,7 +151,6 @@ impl KeyboardController {
                     let _ = io::stdout().flush();
 
                     if let Some(window) = listbox.root().and_downcast::<ApplicationWindow>() {
-                        use crate::window_state::WindowState;
                         Self::save_current_window_state(&window);
                         window.close();
                     }

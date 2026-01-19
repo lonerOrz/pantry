@@ -1,10 +1,8 @@
 use gtk4::prelude::ObjectExt;
 use gtk4::ListBox;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use crate::domain::item::Item;
 
 pub struct PreviewManager;
 
@@ -26,24 +24,26 @@ impl PreviewManager {
 
         let prev_time = last_update.load(Ordering::Relaxed);
         // Skip throttling for initial update (when prev_time is 0) or if enough time has passed
-        if prev_time != 0 && now.saturating_sub(prev_time) < crate::constants::PREVIEW_UPDATE_THROTTLE_MS {
+        if prev_time != 0
+            && now.saturating_sub(prev_time) < crate::constants::PREVIEW_UPDATE_THROTTLE_MS
+        {
             return;
         }
 
         // Attempt to update the timestamp atomically
-        if !last_update.compare_exchange(
-            prev_time,
-            now,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        ).is_ok() {
+        if !last_update
+            .compare_exchange(prev_time, now, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+        {
             // Another thread updated the time, skip this update
             return;
         }
 
         if let Some(preview_area_rc) = preview_area_rc_opt {
             if let Some(selected_row) = listbox.selected_row() {
-                if let Some(item_obj_ptr) = unsafe { selected_row.data::<crate::app::item_object::ItemObject>("item") } {
+                if let Some(item_obj_ptr) =
+                    unsafe { selected_row.data::<crate::app::item_object::ItemObject>("item") }
+                {
                     let item_obj = unsafe { &*item_obj_ptr.as_ptr() };
                     if let Some(item) = item_obj.item() {
                         let preview_area = &*preview_area_rc.borrow();
@@ -54,4 +54,3 @@ impl PreviewManager {
         }
     }
 }
-

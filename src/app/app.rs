@@ -1,21 +1,14 @@
 use clap::Parser;
-use gtk4::{
-    prelude::*, Application, ApplicationWindow, Box as GtkBox, Label, ListBox, ListBoxRow,
-    Orientation, Overlay, ScrolledWindow,
-};
+use gtk4::{prelude::*, Application, ApplicationWindow, ListBox, ScrolledWindow};
 use std::cell::RefCell;
-use std::io::{self, Read};
 use std::process::Command;
 use std::rc::Rc;
 
-use crate::config::{
-    get_config_display_mode, resolve_display_mode, Config, DisplayMode, SourceMode,
-};
+use crate::app::{event_handlers::EventHandler, search_logic::SearchLogic, ui_builder::UiBuilder};
+use crate::config::{Config, DisplayMode, SourceMode};
 use crate::domain::item::Item;
-use crate::ui::{list, preview, window};
+use crate::ui::preview;
 use crate::window_state::WindowState;
-use crate::app::{ui_builder::UiBuilder, event_handlers::EventHandler, search_logic::SearchLogic};
-use crate::app::preview_manager::PreviewManager;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -79,13 +72,11 @@ impl PantryApp {
     fn build_ui(&self, app: &Application) {
         match &self.input_mode {
             InputMode::Stdin => {
-                let (window, listbox, preview_area_rc_opt, search_label) = UiBuilder::build_stdin_ui(
-                    &self.args,
-                    &self.window_state,
-                    app,
-                );
+                let (window, listbox, preview_area_rc_opt, search_label) =
+                    UiBuilder::build_stdin_ui(&self.args, &self.window_state, app);
 
-                let search_query: crate::ui::search::SearchState = Rc::new(RefCell::new(String::new()));
+                let search_query: crate::ui::search::SearchState =
+                    Rc::new(RefCell::new(String::new()));
                 SearchLogic::setup_filter_func(&listbox, search_query.clone());
 
                 EventHandler::setup_keyboard_controller(
@@ -98,15 +89,13 @@ impl PantryApp {
                 );
 
                 window.present();
-            },
+            }
             InputMode::Config => {
-                let (window, listbox, preview_area_rc_opt, search_label) = UiBuilder::build_config_ui(
-                    &self.args,
-                    &self.window_state,
-                    app,
-                );
+                let (window, listbox, preview_area_rc_opt, search_label) =
+                    UiBuilder::build_config_ui(&self.args, &self.window_state, app);
 
-                let search_query: crate::ui::search::SearchState = Rc::new(RefCell::new(String::new()));
+                let search_query: crate::ui::search::SearchState =
+                    Rc::new(RefCell::new(String::new()));
                 SearchLogic::setup_filter_func(&listbox, search_query.clone());
 
                 EventHandler::setup_keyboard_controller(
@@ -127,7 +116,7 @@ impl PantryApp {
                 );
 
                 window.present();
-            },
+            }
         }
     }
 
@@ -319,26 +308,36 @@ impl PantryApp {
 
             glib::idle_add_local(move || {
                 if let Some(listbox_strong) = listbox_weak_clone.upgrade() {
-                    crate::services::ItemService::add_items_to_listbox(&listbox_strong, &processed_items);
+                    crate::services::ItemService::add_items_to_listbox(
+                        &listbox_strong,
+                        &processed_items,
+                    );
 
                     // After all items are added, select the first item and trigger preview
                     crate::services::ItemService::select_first_item(&listbox_strong);
 
                     // Trigger initial preview update
-                    glib::timeout_add_local(std::time::Duration::from_millis(crate::constants::INITIAL_PREVIEW_DELAY_MS), {
-                        let listbox_clone = listbox_strong.clone();
-                        let preview_area_rc_opt_clone = preview_area_rc_opt_clone.clone();
-                        move || {
-                            crate::app::preview_manager::PreviewManager::update_preview(&listbox_clone, &preview_area_rc_opt_clone);
-                            glib::ControlFlow::Break
-                        }
-                    });
+                    glib::timeout_add_local(
+                        std::time::Duration::from_millis(
+                            crate::constants::INITIAL_PREVIEW_DELAY_MS,
+                        ),
+                        {
+                            let listbox_clone = listbox_strong.clone();
+                            let preview_area_rc_opt_clone = preview_area_rc_opt_clone.clone();
+                            move || {
+                                crate::app::preview_manager::PreviewManager::update_preview(
+                                    &listbox_clone,
+                                    &preview_area_rc_opt_clone,
+                                );
+                                glib::ControlFlow::Break
+                            }
+                        },
+                    );
                 }
                 glib::ControlFlow::Break
             });
         });
     }
-
 }
 
 pub fn get_default_config_path() -> String {
