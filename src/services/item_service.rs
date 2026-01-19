@@ -22,7 +22,7 @@ impl ItemService {
             let row = crate::ui::list::create_list_item(&item.title, &item.value);
             let item_obj = crate::app::item_object::ItemObject::new(item.clone());
             unsafe {
-                row.set_data("item_obj", item_obj);
+                row.set_data("item", item_obj);
             }
             listbox.append(&row);
         }

@@ -46,7 +46,8 @@ impl Filter {
             if query.is_empty() {
                 return true;
             }
-            if let Some(item_obj) = row.property::<Option<crate::app::item_object::ItemObject>>("item") {
+            if let Some(item_obj_ptr) = unsafe { row.data::<crate::app::item_object::ItemObject>("item") } {
+                let item_obj = unsafe { &*item_obj_ptr.as_ptr() };
                 if let Some(item) = item_obj.item() {
                     let query_lower = query.to_lowercase();
                     let title_lower = item.title.to_lowercase();

@@ -43,7 +43,7 @@ impl PreviewManager {
 
         if let Some(preview_area_rc) = preview_area_rc_opt {
             if let Some(selected_row) = listbox.selected_row() {
-                if let Some(item_obj_ptr) = unsafe { selected_row.data::<crate::app::item_object::ItemObject>("item_obj") } {
+                if let Some(item_obj_ptr) = unsafe { selected_row.data::<crate::app::item_object::ItemObject>("item") } {
                     let item_obj = unsafe { &*item_obj_ptr.as_ptr() };
                     if let Some(item) = item_obj.item() {
                         let preview_area = &*preview_area_rc.borrow();

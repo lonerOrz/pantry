@@ -66,7 +66,7 @@ impl EventHandler {
 // 独立函数，用于处理 UI 事件，避免生命周期问题
 pub fn handle_selection(listbox: &ListBox) {
     if let Some(selected_row) = listbox.selected_row() {
-        if let Some(item_obj_ptr) = unsafe { selected_row.data::<crate::app::item_object::ItemObject>("item_obj") } {
+        if let Some(item_obj_ptr) = unsafe { selected_row.data::<crate::app::item_object::ItemObject>("item") } {
             let item_obj = unsafe { &*item_obj_ptr.as_ptr() };
             if let Some(item) = item_obj.item() {
                 print!("{}", item.value);

@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use crate::domain::item::Item;
 use crate::ui::preview::PreviewArea;
+use crate::app::item_object::ItemObject;
 
 /// 键盘控制器
 pub struct KeyboardController {
@@ -139,18 +140,19 @@ impl KeyboardController {
     /// 处理用户选择
     fn handle_selection(listbox: &ListBox) {
         if let Some(selected_row) = listbox.selected_row() {
-            if let Some(item_ptr) = unsafe { selected_row.data::<Item>("item") } {
-                let item = unsafe { &*item_ptr.as_ptr() };
+            if let Some(item_obj_ptr) = unsafe { selected_row.data::<ItemObject>("item") } {
+                let item_obj = unsafe { &*item_obj_ptr.as_ptr() };
+                if let Some(item) = item_obj.item() {
+                    print!("{}", item.value);
 
-                print!("{}", item.value);
+                    use std::io::{self, Write};
+                    let _ = io::stdout().flush();
 
-                use std::io::{self, Write};
-                let _ = io::stdout().flush();
-
-                if let Some(window) = listbox.root().and_downcast::<ApplicationWindow>() {
-                    use crate::window_state::WindowState;
-                    Self::save_current_window_state(&window);
-                    window.close();
+                    if let Some(window) = listbox.root().and_downcast::<ApplicationWindow>() {
+                        use crate::window_state::WindowState;
+                        Self::save_current_window_state(&window);
+                        window.close();
+                    }
                 }
             }
         }
@@ -231,15 +233,16 @@ impl KeyboardController {
 
         if let Some(preview_area_rc) = preview_area_rc_opt {
             if let Some(selected_row) = listbox.selected_row() {
-                if let Some(item_ptr) = unsafe { selected_row.data::<Item>("item") } {
-                    let item = unsafe { &*item_ptr.as_ptr() };
-
-                    if matches!(item.display, crate::config::DisplayMode::Picture) {
-                        let preview_area = &*preview_area_rc.borrow();
-                        preview_area.update_with_content(item);
-                    } else {
-                        let preview_area = &*preview_area_rc.borrow();
-                        preview_area.clear();
+                if let Some(item_obj_ptr) = unsafe { selected_row.data::<ItemObject>("item") } {
+                    let item_obj = unsafe { &*item_obj_ptr.as_ptr() };
+                    if let Some(item) = item_obj.item() {
+                        if matches!(item.display, crate::config::DisplayMode::Picture) {
+                            let preview_area = &*preview_area_rc.borrow();
+                            preview_area.update_with_content(&item);
+                        } else {
+                            let preview_area = &*preview_area_rc.borrow();
+                            preview_area.clear();
+                        }
                     }
                 }
             }
