@@ -1,4 +1,4 @@
-use crate::items::Item;
+use crate::domain::item::Item;
 use gdk_pixbuf::Pixbuf;
 use gtk4::prelude::*;
 use gtk4::{

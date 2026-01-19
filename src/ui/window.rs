@@ -1,7 +1,6 @@
-use crate::Args;
 use gtk4::{prelude::WidgetExt, Application, ApplicationWindow, CssProvider};
 
-pub fn create_main_window(app: &Application, _args: &Args) -> ApplicationWindow {
+pub fn create_main_window(app: &Application, _args: &crate::app::app::Args) -> ApplicationWindow {
     let window = ApplicationWindow::builder()
         .application(app)
         .title("pantry")

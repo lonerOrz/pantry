@@ -76,7 +76,7 @@ pantry -f /path/to/config.toml -c bookmarks
 
 Options:
 
-- `-f, --config`: Configuration file path (defaults to `~/.config/pantry/config.toml`)
+- `-f, --config`: Configuration file path [default: `~/.config/pantry/config.toml`]
 - `-c, --category`: Specify the category to load (load only categories matching the global display mode if not specified)
 - `-d, --display`: Display mode: text or picture (overrides config file setting)
 
