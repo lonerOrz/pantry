@@ -4,9 +4,9 @@ use gtk4::{
     Label, ListBox, ListBoxRow, Orientation, Overlay, PropagationPhase, ScrolledWindow,
 };
 use std::cell::RefCell;
-use std::rc::Rc;
-use std::process::Command;
 use std::io::{self, Read};
+use std::process::Command;
+use std::rc::Rc;
 
 mod config;
 mod items;
@@ -90,41 +90,42 @@ fn build_ui(app: &Application, args: &Args) {
         // 根据命令行参数或默认值确定显示模式
         let display_mode = resolve_display_mode(&args.display, &None, &DisplayMode::Text);
 
-        let (main_widget, listbox, preview_area_rc_opt) = if matches!(display_mode, DisplayMode::Picture) {
-            let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
+        let (main_widget, listbox, preview_area_rc_opt) =
+            if matches!(display_mode, DisplayMode::Picture) {
+                let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
 
-            let listbox = list::create_listbox();
-            let scrolled = wrap_in_scroll(&listbox);
-            scrolled.set_hexpand(true);
-            paned.set_start_child(Some(&scrolled));
+                let listbox = list::create_listbox();
+                let scrolled = wrap_in_scroll(&listbox);
+                scrolled.set_hexpand(true);
+                paned.set_start_child(Some(&scrolled));
 
-            let preview_area = preview::PreviewArea::new();
-            preview_area.container.set_hexpand(true);
-            preview_area.container.set_vexpand(true);
-            paned.set_end_child(Some(&preview_area.container));
+                let preview_area = preview::PreviewArea::new();
+                preview_area.container.set_hexpand(true);
+                preview_area.container.set_vexpand(true);
+                paned.set_end_child(Some(&preview_area.container));
 
-            paned.set_resize_start_child(true);
-            paned.set_shrink_start_child(false);
-            paned.set_resize_end_child(true);
-            paned.set_shrink_end_child(false);
+                paned.set_resize_start_child(true);
+                paned.set_shrink_start_child(false);
+                paned.set_resize_end_child(true);
+                paned.set_shrink_end_child(false);
 
-            paned.set_position(360);
+                paned.set_position(360);
 
-            let preview_area_rc = std::rc::Rc::new(std::cell::RefCell::new(preview_area));
+                let preview_area_rc = std::rc::Rc::new(std::cell::RefCell::new(preview_area));
 
-            (
-                paned.upcast::<gtk4::Widget>(),
-                listbox,
-                Some(preview_area_rc),
-            )
-        } else {
-            let layout = GtkBox::new(Orientation::Vertical, 0);
-            let listbox = list::create_listbox();
-            let scrolled = wrap_in_scroll(&listbox);
-            layout.append(&scrolled);
+                (
+                    paned.upcast::<gtk4::Widget>(),
+                    listbox,
+                    Some(preview_area_rc),
+                )
+            } else {
+                let layout = GtkBox::new(Orientation::Vertical, 0);
+                let listbox = list::create_listbox();
+                let scrolled = wrap_in_scroll(&listbox);
+                layout.append(&scrolled);
 
-            (layout.upcast::<gtk4::Widget>(), listbox, None)
-        };
+                (layout.upcast::<gtk4::Widget>(), listbox, None)
+            };
 
         let (overlay, search_label) = create_search_overlay(&main_widget);
         window.set_child(Some(&overlay));
@@ -358,7 +359,11 @@ fn resolve_display_mode(
     global_display.clone()
 }
 
-fn get_config_display_mode(config_path: &str, category_filter: &Option<String>, display_arg: &Option<String>) -> DisplayMode {
+fn get_config_display_mode(
+    config_path: &str,
+    category_filter: &Option<String>,
+    display_arg: &Option<String>,
+) -> DisplayMode {
     if let Ok(content) = std::fs::read_to_string(config_path) {
         if let Ok(config) = toml::from_str::<Config>(&content) {
             if let Some(category) = category_filter {
@@ -366,7 +371,7 @@ fn get_config_display_mode(config_path: &str, category_filter: &Option<String>, 
                     return resolve_display_mode(
                         display_arg,
                         &category_config.display,
-                        &config.display
+                        &config.display,
                     );
                 }
             }
@@ -423,10 +428,7 @@ fn setup_filter_func(listbox: &ListBox, query_state: SearchState) {
 
 // Helper function to execute commands and return output
 fn execute_command(command: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .output()?;
+    let output = Command::new("sh").arg("-c").arg(command).output()?;
 
     if output.status.success() {
         Ok(String::from_utf8(output.stdout)?)
@@ -690,11 +692,8 @@ fn load_items_from_config(
         if let Some(ref category) = category_filter {
             if let Some(category_config) = config.categories.get(category) {
                 // 使用统一的显示模式解析函数
-                let effective_display = resolve_display_mode(
-                    &display_arg,
-                    &category_config.display,
-                    &config.display
-                );
+                let effective_display =
+                    resolve_display_mode(&display_arg, &category_config.display, &config.display);
                 let effective_source = category_config
                     .source
                     .clone()
@@ -721,9 +720,9 @@ fn load_items_from_config(
                                 for (idx, line) in lines.iter().enumerate() {
                                     if !line.trim().is_empty() {
                                         let title = if lines.len() == 1 {
-                                            key.clone()  // Single line output uses original key
+                                            key.clone() // Single line output uses original key
                                         } else {
-                                            format!("{} [{}]", key, idx + 1)  // Multi-line adds index
+                                            format!("{} [{}]", key, idx + 1) // Multi-line adds index
                                         };
 
                                         items.push(Item {
@@ -744,11 +743,8 @@ fn load_items_from_config(
             // Load items only from categories that match the global default display mode
             for (category_name, category_config) in &config.categories {
                 // 使用统一的显示模式解析函数
-                let effective_display = resolve_display_mode(
-                    &display_arg,
-                    &category_config.display,
-                    &config.display
-                );
+                let effective_display =
+                    resolve_display_mode(&display_arg, &category_config.display, &config.display);
                 let effective_source = category_config
                     .source
                     .clone()
