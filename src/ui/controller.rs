@@ -67,7 +67,7 @@ impl KeyboardController {
                 // 延迟预览更新，等待选择更新完成
                 let listbox_clone = listbox.clone();
                 let preview_area_rc_clone = preview_area_rc.clone();
-                glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
+                glib::timeout_add_local(std::time::Duration::from_millis(crate::constants::SELECTION_UPDATE_DELAY_MS), move || {
                     Self::update_preview(&listbox_clone, &preview_area_rc_clone);
                     glib::ControlFlow::Break
                 });
@@ -209,12 +209,12 @@ impl KeyboardController {
         listbox: &ListBox,
         preview_area_rc_opt: &Option<Rc<RefCell<PreviewArea>>>,
     ) {
-        use std::sync::Mutex;
+        use std::sync::{Mutex, OnceLock};
         use std::time::{SystemTime, UNIX_EPOCH};
 
-        lazy_static::lazy_static! {
-            static ref LAST_PREVIEW_UPDATE: Mutex<u128> = Mutex::new(0);
-        }
+        static LAST_PREVIEW_UPDATE: OnceLock<Mutex<u128>> = OnceLock::new();
+
+        let mutex = LAST_PREVIEW_UPDATE.get_or_init(|| Mutex::new(0));
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -222,8 +222,8 @@ impl KeyboardController {
             .unwrap_or(0);
 
         {
-            let mut last_update = LAST_PREVIEW_UPDATE.lock().unwrap();
-            if now - *last_update < 50 {
+            let mut last_update = mutex.lock().unwrap();
+            if now - *last_update < crate::constants::PREVIEW_UPDATE_THROTTLE_MS as u128 {
                 return;
             }
             *last_update = now;

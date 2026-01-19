@@ -11,9 +11,14 @@ impl ConfigLoader {
             .unwrap_or_else(|| std::env::current_dir().unwrap())
             .join("pantry");
 
-        std::fs::create_dir_all(&cache_dir).expect("Failed to create cache directory");
-
-        ConfigLoader { cache_dir }
+        if let Err(e) = std::fs::create_dir_all(&cache_dir) {
+            eprintln!("Warning: Failed to create cache directory: {}", e);
+            // Use a fallback directory
+            let fallback_cache_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            ConfigLoader { cache_dir: fallback_cache_dir }
+        } else {
+            ConfigLoader { cache_dir }
+        }
     }
 
     pub fn load(&self, path: &str) -> Result<Config, ConfigError> {

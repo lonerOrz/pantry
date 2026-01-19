@@ -23,11 +23,15 @@ pub struct PreviewArea {
 
 impl PreviewArea {
     pub fn new() -> Self {
-        let cache_dir = dirs::cache_dir()
+        let mut cache_dir = dirs::cache_dir()
             .unwrap_or_else(|| std::env::current_dir().unwrap())
             .join("pantry");
 
-        fs::create_dir_all(&cache_dir).expect("Failed to create cache directory");
+        if let Err(e) = fs::create_dir_all(&cache_dir) {
+            eprintln!("Warning: Failed to create cache directory: {}", e);
+            // Use fallback directory
+            cache_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        }
 
         let image_container = GtkBox::new(Orientation::Vertical, 0);
         image_container.set_vexpand(true);

@@ -46,17 +46,20 @@ impl Filter {
             if query.is_empty() {
                 return true;
             }
-            if let Some(item_ptr) = unsafe { row.data::<Item>("item") } {
-                let item = unsafe { &*item_ptr.as_ptr() };
-                let query_lower = query.to_lowercase();
-                let title_lower = item.title.to_lowercase();
-                let value_lower = item.value.to_lowercase();
-                title_lower == query_lower
-                    || value_lower == query_lower
-                    || title_lower.contains(&query_lower)
-                    || value_lower.contains(&query_lower)
-                    || FuzzyMatcher::match_text(&title_lower, &query_lower)
-                    || FuzzyMatcher::match_text(&value_lower, &query_lower)
+            if let Some(item_obj) = row.property::<Option<crate::app::item_object::ItemObject>>("item") {
+                if let Some(item) = item_obj.item() {
+                    let query_lower = query.to_lowercase();
+                    let title_lower = item.title.to_lowercase();
+                    let value_lower = item.value.to_lowercase();
+                    title_lower == query_lower
+                        || value_lower == query_lower
+                        || title_lower.contains(&query_lower)
+                        || value_lower.contains(&query_lower)
+                        || FuzzyMatcher::match_text(&title_lower, &query_lower)
+                        || FuzzyMatcher::match_text(&value_lower, &query_lower)
+                } else {
+                    false
+                }
             } else {
                 false
             }

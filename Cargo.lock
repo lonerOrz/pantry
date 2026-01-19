@@ -776,6 +776,7 @@ dependencies = [
  "gtk4",
  "infer",
  "lazy_static",
+ "once_cell",
  "rayon",
  "serde",
  "serde_json",

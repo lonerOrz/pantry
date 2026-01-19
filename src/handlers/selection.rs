@@ -9,9 +9,10 @@ impl SelectionHandler {
     pub fn handle_selection(listbox: &ListBox) -> SelectionResult {
         // 从 main.rs::handle_selection 迁移
         if let Some(selected_row) = listbox.selected_row() {
-            if let Some(item_ptr) = unsafe { selected_row.data::<Item>("item") } {
-                let item = unsafe { &*item_ptr.as_ptr() };
-                return SelectionResult::Selected(item.clone());
+            if let Some(item_obj) = selected_row.property::<Option<crate::app::item_object::ItemObject>>("item") {
+                if let Some(item) = item_obj.item() {
+                    return SelectionResult::Selected(item);
+                }
             }
         }
         SelectionResult::None
