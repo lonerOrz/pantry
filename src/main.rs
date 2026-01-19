@@ -6,6 +6,7 @@ use gtk4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::process::Command;
+use std::io::{self, Read};
 
 mod config;
 mod items;
@@ -65,8 +66,72 @@ fn main() {
 fn build_ui(app: &Application, args: &Args) {
     let window_state = WindowState::load();
 
-    let window = window::create_main_window(app, args);
+    // 检查是否有管道输入
+    let has_stdin_input = !atty::is(atty::Stream::Stdin);
 
+    // 根据是否有管道输入选择不同的处理方式
+    if has_stdin_input {
+        // 从 stdin 读取数据
+        let mut stdin_data = String::new();
+        io::stdin().read_to_string(&mut stdin_data).unwrap();
+
+        // 创建默认的文本模式界面
+        let window = window::create_main_window(app, args);
+        window.set_default_size(window_state.width, window_state.height);
+
+        if window_state.maximized {
+            window.maximize();
+        }
+
+        let layout = GtkBox::new(Orientation::Vertical, 0);
+        let listbox = list::create_listbox();
+        let scrolled = wrap_in_scroll(&listbox);
+        layout.append(&scrolled);
+
+        let (main_widget, preview_area_rc_opt) = (layout.upcast::<gtk4::Widget>(), None);
+
+        let (overlay, search_label) = create_search_overlay(&main_widget);
+        window.set_child(Some(&overlay));
+
+        let search_query: SearchState = Rc::new(RefCell::new(String::new()));
+        setup_filter_func(&listbox, search_query.clone());
+
+        setup_keyboard_controller(
+            &window,
+            &listbox,
+            search_query,
+            search_label,
+            args,
+            preview_area_rc_opt.clone(),
+        );
+
+        // 从 stdin 数据创建条目
+        for line in stdin_data.lines() {
+            if !line.trim().is_empty() {
+                let item = Item {
+                    title: line.to_string(),
+                    value: line.to_string(),
+                    category: "stdin".to_string(),
+                    display: DisplayMode::Text, // 管道输入默认为文本模式
+                    source: SourceMode::Config,
+                };
+
+                add_item_to_ui(&listbox, item);
+            }
+        }
+
+        // 选择第一个项目
+        if let Some(first_row) = listbox.row_at_index(0) {
+            listbox.select_row(Some(&first_row));
+            first_row.grab_focus();
+        }
+
+        window.present();
+        return;
+    }
+
+    // 原有的配置文件加载逻辑
+    let window = window::create_main_window(app, args);
     window.set_default_size(window_state.width, window_state.height);
 
     if window_state.maximized {

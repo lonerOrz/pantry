@@ -4,7 +4,7 @@ display = "picture"
 
 # Commands category - uses default "text" display mode since no display is specified
 [commands]
-# display = "text"
+display = "text"
 "Shutdown" = "shutdown now"
 "Reboot" = "reboot"
 "Lock Screen" = "loginctl lock-session"
@@ -24,3 +24,10 @@ This validation happens between two peers you own (Actions VM and your Browser).
 [live]
 display = "picture"
 "wallpapers" = "~/Pictures/wallpapers/ja/"
+
+[clip]
+display = "picture"
+source = "command"
+"history" = """
+cliphist list | awk '{print $1}' | sort -n | tail -n 10 | xargs -L 1 cliphist_transform.sh
+"""
