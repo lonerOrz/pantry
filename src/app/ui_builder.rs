@@ -110,6 +110,16 @@ impl UiBuilder {
                 });
             });
 
+            // Trigger initial preview update
+            glib::timeout_add_local(std::time::Duration::from_millis(crate::constants::INITIAL_PREVIEW_DELAY_MS), {
+                let listbox_clone = listbox.clone();
+                let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
+                move || {
+                    update_preview(&listbox_clone, &preview_area_rc_opt_clone);
+                    glib::ControlFlow::Break
+                }
+            });
+
             if let Some(paned_widget) = main_widget.downcast_ref::<gtk4::Paned>() {
                 let window_clone = window.clone();
                 let paned_widget_clone = paned_widget.clone();
@@ -251,7 +261,8 @@ fn update_preview(
         .unwrap_or(0);
 
     let prev_time = last_update.load(Ordering::Relaxed);
-    if now.saturating_sub(prev_time) < crate::constants::PREVIEW_UPDATE_THROTTLE_MS {
+    // Skip throttling for initial update (when prev_time is 0) or if enough time has passed
+    if prev_time != 0 && now.saturating_sub(prev_time) < crate::constants::PREVIEW_UPDATE_THROTTLE_MS {
         return;
     }
 

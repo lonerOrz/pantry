@@ -15,6 +15,7 @@ use crate::domain::item::Item;
 use crate::ui::{list, preview, window};
 use crate::window_state::WindowState;
 use crate::app::{ui_builder::UiBuilder, event_handlers::EventHandler, search_logic::SearchLogic};
+use crate::app::preview_manager::PreviewManager;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -323,13 +324,21 @@ impl PantryApp {
                     // After all items are added, select the first item and trigger preview
                     crate::services::ItemService::select_first_item(&listbox_strong);
 
-                    // Trigger initial preview
-                    crate::app::preview_manager::PreviewManager::update_preview(&listbox_strong, &preview_area_rc_opt_clone);
+                    // Trigger initial preview update
+                    glib::timeout_add_local(std::time::Duration::from_millis(crate::constants::INITIAL_PREVIEW_DELAY_MS), {
+                        let listbox_clone = listbox_strong.clone();
+                        let preview_area_rc_opt_clone = preview_area_rc_opt_clone.clone();
+                        move || {
+                            crate::app::preview_manager::PreviewManager::update_preview(&listbox_clone, &preview_area_rc_opt_clone);
+                            glib::ControlFlow::Break
+                        }
+                    });
                 }
                 glib::ControlFlow::Break
             });
         });
     }
+
 }
 
 pub fn get_default_config_path() -> String {

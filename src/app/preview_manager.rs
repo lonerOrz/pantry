@@ -25,7 +25,8 @@ impl PreviewManager {
             .unwrap_or(0);
 
         let prev_time = last_update.load(Ordering::Relaxed);
-        if now.saturating_sub(prev_time) < crate::constants::PREVIEW_UPDATE_THROTTLE_MS {
+        // Skip throttling for initial update (when prev_time is 0) or if enough time has passed
+        if prev_time != 0 && now.saturating_sub(prev_time) < crate::constants::PREVIEW_UPDATE_THROTTLE_MS {
             return;
         }
 
