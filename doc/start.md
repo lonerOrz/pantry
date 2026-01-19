@@ -56,6 +56,25 @@ display = "picture"
 "live" = "~/Pictures/wallpapers/ja/"
 ```
 
+### Dynamic Source Mode
+
+Pantry now supports a `dynamic` source mode for real-time command execution and integration with external tools:
+
+```toml
+[cliphist]
+display = "picture"  # Show previews for images, text for text content
+source = "dynamic"
+
+[cliphist.entries]
+"cliphist list | head -n 10" = "cliphist decode {}"
+```
+
+In this configuration:
+- The left side of the entries specifies a command whose output populates the list
+- The right side specifies a command template that gets executed when an item is selected
+- The `{}` placeholder gets replaced with the selected item's value (a line from the list command output)
+- Content is automatically detected as text or binary (image) and displayed accordingly
+
 ## Categories
 
 You can specify a specific category to load using the `-c` option:

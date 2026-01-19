@@ -16,6 +16,7 @@ pantry is a GTK4-based graphical interface tool for managing and selecting vario
 - Image preview and detailed information display
 - Configuration file-driven data management
 - Output piping for integration with other tools
+- Dynamic source mode for real-time command execution
 
 ## Installation
 
@@ -96,6 +97,24 @@ Force text mode (use with URLs or text):
 ```bash
 pantry -f bookmarks.toml -d text
 ```
+
+Use dynamic source mode for real-time command integration:
+```toml
+# config.toml
+[cliphist]
+display = "picture"
+source = "dynamic"
+
+[cliphist.entries]
+"cliphist list | head -n 10" = "cliphist decode {}"
+```
+
+Then run:
+```bash
+pantry -f config.toml -c cliphist
+```
+
+In dynamic mode, the left side of entries specifies a command whose output populates the list, and the right side specifies a command template where `{}` gets replaced with the selected item's value.
 
 ## Documentation
 

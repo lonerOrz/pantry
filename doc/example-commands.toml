@@ -42,4 +42,4 @@ echo -e "Option 1\nOption 2\nOption 3"
 display = "picture"
 source = "dynamic"
 [cliphist.entries]
-"cliphist list | awk '{print $1 \"\\t\" substr($0, index($0,$2))}' | head -n 5" = "cliphist decode {}"
+"cliphist list | awk '{print $1 \"\\t\" substr($0, index($0,$2))}' | head -n 50" = "cliphist decode {}"
