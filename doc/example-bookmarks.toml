@@ -1,7 +1,11 @@
+# Global default display mode
 display = "text"
 
 # === URL Category: Common Websites ===
 [url]
+display = "text"
+
+[url.entries]
 "GitHub - lonerOrz" = "https://github.com/lonerOrz"
 "GitHub - Main" = "https://github.com"
 "Rust Lang" = "https://www.rust-lang.org"
@@ -19,11 +23,17 @@ display = "text"
 
 # === Email Category ===
 [email]
+display = "text"
+
+[email.entries]
 "Outlook" = "https://outlook.live.com"
 "Proton Mail" = "https://mail.proton.me"
 
 # === Tools Category ===
 [tools]
+display = "text"
+
+[tools.entries]
 "Vim Official" = "https://www.vim.org"
 "Neovim" = "https://neovim.io"
 "GitHub Copilot" = "https://github.com/features/copilot"
@@ -32,11 +42,17 @@ display = "text"
 
 # === Docs Category ===
 [docs]
+display = "text"
+
+[docs.entries]
 "Rust Book" = "https://doc.rust-lang.org/book/"
 "Rust Nomicon" = "https://doc.rust-lang.org/nomicon/"
 "GTK4 Docs" = "https://docs.gtk.org/gtk4/"
 
 # === Community Category ===
 [community]
+display = "text"
+
+[community.entries]
 "Rust Users Forum" = "https://users.rust-lang.org"
 "r/rust on Reddit" = "https://www.reddit.com/r/rust/"

@@ -77,10 +77,9 @@ impl PreviewArea {
     }
 
     pub fn update_with_content(&self, item: &Item) {
-        match crate::utils::get_file_type(&item.value) {
-            crate::utils::FileType::Image => self.update_with_image_content(item),
-            crate::utils::FileType::Video => self.update_with_text_content(item),
-            _ => self.update_with_text_content(item),
+        match item.display {
+            crate::config::DisplayMode::Picture => self.update_with_image_content(item),
+            crate::config::DisplayMode::Text => self.update_with_text_content(item),
         }
     }
 

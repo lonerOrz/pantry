@@ -1,13 +1,26 @@
+# Global default display mode
 display = "picture"
 
 [favorites]
+display = "picture"
+
+[favorites.entries]
 "cat" = "~/Pictures/wallpapers/cat.png"
 
 [logos]
+"display" = "picture"
+
+[logos.entries]
 "logos" = "~/Pictures/logos/"  # This will load all images in the folder
 
 [avatars]
+display = "picture"
+
+[avatars.entries]
 "profile" = "~/Pictures/avatar/avatar.png"
 
 [other]
+display = "picture"
+
+[other.entries]
 "other" = "~/Pictures/wallpapers/other/"

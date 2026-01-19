@@ -5,10 +5,11 @@ Pantry is a generic selector tool for handling various types of entries with tex
 ## Table of Contents
 
 - [Basic Usage](#basic-usage)
+- [Command Line Options](#command-line-options)
 - [Configuration](#configuration)
 - [Categories](#categories)
 - [Preview Modes](#preview-modes)
-- [Piping Output](#piping-output)
+- [Piping Input and Output](#piping-input-and-output)
 - [Example Configurations](#example-configurations)
 
 ## Basic Usage
@@ -21,11 +22,19 @@ pantry -f config.toml
 
 This will open the pantry GUI with entries from the specified configuration file.
 
+## Command Line Options
+
+Pantry supports several command line options:
+
+- `-f, --config`: Configuration file path [default: `~/.config/pantry/config.toml`]
+- `-c, --category`: Specify the category to load (load only categories matching the global display mode if not specified)
+- `-d, --display`: Display mode: text or picture (overrides config file setting)
+
 ## Configuration
 
 Pantry uses TOML format configuration files with separate display and input modes. The configuration contains global defaults and entries for various categories. Each category can optionally specify its own modes, which will override the global defaults.
 
-Example configuration:
+The new configuration format separates entries from category settings using a `.entries` sub-table:
 
 ```toml
 # Global default display mode
@@ -33,12 +42,17 @@ display = "text"
 
 # Commands category - uses default "text" display mode
 [commands]
+display = "text"
+
+[commands.entries]
 "Shutdown" = "shutdown now"
 "Reboot" = "reboot"
 
 # Live wallpapers category - explicitly set to "picture" display mode
 [live]
 display = "picture"
+
+[live.entries]
 "live" = "~/Pictures/wallpapers/ja/"
 ```
 
@@ -61,13 +75,31 @@ Pantry supports two display modes:
 - `text` mode: For text entries like bookmarks, commands, etc.
 - `picture` mode: For image files with preview functionality
 
-The display mode can be set globally or per category.
+The display mode can be set globally, per category, or overridden with the `-d` command line option.
 
-## Piping Output
+## Piping Input and Output
+
+Pantry now supports both input and output piping, making it more flexible and Unix-like:
+
+### Input Piping
+
+You can pipe data directly to pantry without using a configuration file:
+
+```bash
+echo -e "Option 1\nOption 2\nOption 3" | pantry
+```
+
+You can also specify the display mode when using piped input:
+
+```bash
+ls ~/Pictures/ | pantry -d picture
+```
+
+### Output Piping
 
 One of pantry's powerful features is the ability to pipe its output to other commands. When you select an entry in pantry and press Enter, the value of that entry is output to stdout, which can then be piped to other commands.
 
-### Examples:
+#### Examples:
 
 Open selected URL in your default browser:
 
@@ -84,7 +116,7 @@ pantry -f example-commands.toml | xargs sh
 Copy selected entry to clipboard (using xclip):
 
 ```bash
-pantry -f example-bookmarks.toml | xclip -selection clipboard
+pantry -f example-bookmarks.toml | xargs xclip -selection clipboard
 ```
 
 Set selected image as wallpaper:
@@ -131,4 +163,4 @@ Pantry comes with several example configuration files to help you get started:
 - [example-commands.toml](example-commands.toml) - Example configuration for system commands
 - [example-pictures.toml](example-pictures.toml) - Example configuration for image collections
 
-These examples demonstrate different ways to structure your configuration files and use the category display mode override feature.
+These examples demonstrate the new configuration format with separated entries and the category display mode override feature.

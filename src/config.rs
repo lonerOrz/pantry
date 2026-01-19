@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Default)]
@@ -24,57 +24,48 @@ pub struct Category {
     pub entries: HashMap<String, String>,
 }
 
-impl<'de> Deserialize<'de> for Category {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de::{MapAccess, Visitor};
-        use std::fmt;
+#[derive(Deserialize, Debug)]
+struct TempCategory {
+    #[serde(default)]
+    display: Option<DisplayMode>,
+    #[serde(default)]
+    source: Option<SourceMode>,
+    #[serde(default)]
+    entries: HashMap<String, String>,
+}
 
-        struct CategoryVisitor;
+#[derive(Deserialize, Debug)]
+struct TempConfig {
+    #[serde(default)]
+    display: DisplayMode,
+    #[serde(default)]
+    source: SourceMode,
+    #[serde(flatten)]
+    categories: HashMap<String, serde_json::Value>,
+}
 
-        impl<'de> Visitor<'de> for CategoryVisitor {
-            type Value = Category;
+impl TempConfig {
+    fn parse_categories(self) -> Result<Config, Box<dyn std::error::Error>> {
+        let mut parsed_categories = HashMap::new();
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a map")
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<Category, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut display = None;
-                let mut source = None;
-                let mut entries = HashMap::new();
-
-                while let Some(key) = map.next_key::<String>()? {
-                    match key.as_str() {
-                        "display" => {
-                            if display.is_some() {
-                                return Err(serde::de::Error::duplicate_field("display"));
-                            }
-                            display = Some(map.next_value()?);
-                        }
-                        "source" => {
-                            if source.is_some() {
-                                return Err(serde::de::Error::duplicate_field("source"));
-                            }
-                            source = Some(map.next_value()?);
-                        }
-                        _ => {
-                            let value: String = map.next_value()?;
-                            entries.insert(key, value);
-                        }
-                    }
-                }
-
-                Ok(Category { display, source, entries })
-            }
+        for (name, value) in self.categories {
+            // 解析每个类别，尝试将其作为包含 entries 的对象
+            let temp_category: TempCategory = serde_json::from_value(value)?;
+            parsed_categories.insert(
+                name,
+                Category {
+                    display: temp_category.display,
+                    source: temp_category.source,
+                    entries: temp_category.entries,
+                },
+            );
         }
 
-        deserializer.deserialize_map(CategoryVisitor)
+        Ok(Config {
+            display: self.display,
+            source: self.source,
+            categories: parsed_categories,
+        })
     }
 }
 
@@ -88,57 +79,9 @@ pub struct Config {
 impl<'de> Deserialize<'de> for Config {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
+        D: Deserializer<'de>,
     {
-        use serde::de::{MapAccess, Visitor};
-        use std::fmt;
-
-        struct ConfigVisitor;
-
-        impl<'de> Visitor<'de> for ConfigVisitor {
-            type Value = Config;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a map")
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<Config, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut display = None;
-                let mut source = None;
-                let mut categories = HashMap::new();
-
-                while let Some(key) = map.next_key::<String>()? {
-                    match key.as_str() {
-                        "display" => {
-                            if display.is_some() {
-                                return Err(serde::de::Error::duplicate_field("display"));
-                            }
-                            display = Some(map.next_value()?);
-                        }
-                        "source" => {
-                            if source.is_some() {
-                                return Err(serde::de::Error::duplicate_field("source"));
-                            }
-                            source = Some(map.next_value()?);
-                        }
-                        _ => {
-                            let category: Category = map.next_value()?;
-                            categories.insert(key, category);
-                        }
-                    }
-                }
-
-                Ok(Config {
-                    display: display.unwrap_or_default(),
-                    source: source.unwrap_or_default(),
-                    categories,
-                })
-            }
-        }
-
-        deserializer.deserialize_map(ConfigVisitor)
+        let temp = TempConfig::deserialize(deserializer)?;
+        temp.parse_categories().map_err(serde::de::Error::custom)
     }
 }

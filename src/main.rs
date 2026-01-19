@@ -34,6 +34,10 @@ struct Args {
     #[arg(short = 'c', long = "category")]
     category: Option<String>,
 
+    /// Display mode: text or picture
+    #[arg(short = 'd', long = "display")]
+    display: Option<String>,
+
     /// Preview display: text or image (now read from config file, this parameter is deprecated)
     #[arg(long = "preview", hide = true, default_value = "auto")]
     preview_mode: String,
@@ -83,12 +87,51 @@ fn build_ui(app: &Application, args: &Args) {
             window.maximize();
         }
 
-        let layout = GtkBox::new(Orientation::Vertical, 0);
-        let listbox = list::create_listbox();
-        let scrolled = wrap_in_scroll(&listbox);
-        layout.append(&scrolled);
+        // 根据命令行参数或默认值确定显示模式
+        let display_mode = if let Some(display_str) = &args.display {
+            match display_str.as_str() {
+                "picture" => DisplayMode::Picture,
+                _ => DisplayMode::Text,
+            }
+        } else {
+            DisplayMode::Text // 默认为文本模式
+        };
 
-        let (main_widget, preview_area_rc_opt) = (layout.upcast::<gtk4::Widget>(), None);
+        let (main_widget, listbox, preview_area_rc_opt) = if matches!(display_mode, DisplayMode::Picture) {
+            let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
+
+            let listbox = list::create_listbox();
+            let scrolled = wrap_in_scroll(&listbox);
+            scrolled.set_hexpand(true);
+            paned.set_start_child(Some(&scrolled));
+
+            let preview_area = preview::PreviewArea::new();
+            preview_area.container.set_hexpand(true);
+            preview_area.container.set_vexpand(true);
+            paned.set_end_child(Some(&preview_area.container));
+
+            paned.set_resize_start_child(true);
+            paned.set_shrink_start_child(false);
+            paned.set_resize_end_child(true);
+            paned.set_shrink_end_child(false);
+
+            paned.set_position(360);
+
+            let preview_area_rc = std::rc::Rc::new(std::cell::RefCell::new(preview_area));
+
+            (
+                paned.upcast::<gtk4::Widget>(),
+                listbox,
+                Some(preview_area_rc),
+            )
+        } else {
+            let layout = GtkBox::new(Orientation::Vertical, 0);
+            let listbox = list::create_listbox();
+            let scrolled = wrap_in_scroll(&listbox);
+            layout.append(&scrolled);
+
+            (layout.upcast::<gtk4::Widget>(), listbox, None)
+        };
 
         let (overlay, search_label) = create_search_overlay(&main_widget);
         window.set_child(Some(&overlay));
@@ -112,7 +155,7 @@ fn build_ui(app: &Application, args: &Args) {
                     title: line.to_string(),
                     value: line.to_string(),
                     category: "stdin".to_string(),
-                    display: DisplayMode::Text, // 管道输入默认为文本模式
+                    display: display_mode.clone(), // 使用确定的显示模式
                     source: SourceMode::Config,
                 };
 
@@ -124,6 +167,49 @@ fn build_ui(app: &Application, args: &Args) {
         if let Some(first_row) = listbox.row_at_index(0) {
             listbox.select_row(Some(&first_row));
             first_row.grab_focus();
+        }
+
+        // 如果是图片模式，设置预览更新
+        if matches!(display_mode, DisplayMode::Picture) {
+            let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
+            let listbox_clone = listbox.clone();
+            listbox.connect_selected_rows_changed(move |_listbox| {
+                let preview_area_rc_opt_inner = preview_area_rc_opt_clone.clone();
+                let listbox_inner = listbox_clone.clone();
+                glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                    update_preview(&listbox_inner, &preview_area_rc_opt_inner);
+                    glib::ControlFlow::Break
+                });
+            });
+
+            if let Some(paned_widget) = main_widget.downcast_ref::<gtk4::Paned>() {
+                let window_clone = window.clone();
+                let paned_widget_clone = paned_widget.clone();
+                glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                    let allocation = window_clone.default_size();
+                    let width = allocation.0;
+
+                    let position = (width as f64 * 0.3) as i32;
+                    paned_widget_clone.set_position(position);
+
+                    glib::ControlFlow::Break
+                });
+
+                let paned_widget_clone2 = paned_widget.clone();
+                window.connect_realize(move |win| {
+                    let win_clone = win.clone();
+                    let paned_widget_clone3 = paned_widget_clone2.clone();
+                    glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
+                        let allocation = win_clone.default_size();
+                        let width = allocation.0;
+
+                        let position = (width as f64 * 0.3) as i32;
+                        paned_widget_clone3.set_position(position);
+
+                        glib::ControlFlow::Break
+                    });
+                });
+            }
         }
 
         window.present();
@@ -141,7 +227,7 @@ fn build_ui(app: &Application, args: &Args) {
     let config_path = args.config.as_ref().unwrap();
 
     let (main_widget, listbox, preview_area_rc_opt) = if matches!(
-        get_config_display_mode(config_path, &args.category),
+        get_config_display_mode(config_path, &args.category, &args.display),
         DisplayMode::Picture
     ) {
         let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
@@ -198,11 +284,12 @@ fn build_ui(app: &Application, args: &Args) {
         &listbox,
         config_path,
         &args.category,
+        &args.display,
         preview_area_rc_opt.clone(),
     );
 
     if matches!(
-        get_config_display_mode(config_path, &args.category),
+        get_config_display_mode(config_path, &args.category, &args.display),
         DisplayMode::Picture
     ) {
         let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
@@ -218,7 +305,7 @@ fn build_ui(app: &Application, args: &Args) {
     }
 
     if matches!(
-        get_config_display_mode(config_path, &args.category),
+        get_config_display_mode(config_path, &args.category, &args.display),
         DisplayMode::Picture
     ) {
         if let Some(paned_widget) = main_widget.downcast_ref::<gtk4::Paned>() {
@@ -254,11 +341,22 @@ fn build_ui(app: &Application, args: &Args) {
     window.present();
 }
 
-fn get_config_display_mode(config_path: &str, category_filter: &Option<String>) -> DisplayMode {
+fn get_config_display_mode(config_path: &str, category_filter: &Option<String>, display_arg: &Option<String>) -> DisplayMode {
+    // 优先使用命令行参数
+    if let Some(display_str) = display_arg {
+        match display_str.as_str() {
+            "picture" => return DisplayMode::Picture,
+            "text" => return DisplayMode::Text,
+            _ => {} // 如果不是有效的显示模式，则继续使用配置文件
+        }
+    }
+
     if let Ok(content) = std::fs::read_to_string(config_path) {
         if let Ok(config) = toml::from_str::<Config>(&content) {
             if let Some(category) = category_filter {
                 if let Some(category_config) = config.categories.get(category) {
+                    // 命令行参数优先级最高，已经在上面处理了
+                    // 如果没有命令行参数，则使用类别设置，否则使用全局设置
                     return category_config
                         .display
                         .clone()
@@ -359,7 +457,7 @@ fn setup_keyboard_controller(
     let search_label = search_label.clone();
     let config_path = args.config.as_ref().unwrap();
     let preview_enabled = matches!(
-        get_config_display_mode(config_path, &args.category),
+        get_config_display_mode(config_path, &args.category, &args.display),
         DisplayMode::Picture
     );
     let preview_area_rc = preview_area_rc_opt;
@@ -430,13 +528,8 @@ fn update_preview(
             if let Some(item_ptr) = unsafe { selected_row.data::<Item>("item") } {
                 let item = unsafe { &*item_ptr.as_ptr() };
 
-                if matches!(item.display, DisplayMode::Picture) {
-                    let preview_area = &*preview_area_rc.borrow();
-                    preview_area.update_with_content(item);
-                } else {
-                    let preview_area = &*preview_area_rc.borrow();
-                    preview_area.clear();
-                }
+                let preview_area = &*preview_area_rc.borrow();
+                preview_area.update_with_content(item);
             }
         }
     }
@@ -558,10 +651,12 @@ fn load_items_from_config(
     listbox: &ListBox,
     config_path: &str,
     category_filter: &Option<String>,
+    display_arg: &Option<String>,
     preview_area_rc_opt: Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>,
 ) {
     let config_path = config_path.to_string();
     let category_filter = category_filter.clone();
+    let display_arg = display_arg.clone();
     let listbox_weak = listbox.downgrade();
     let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
 
@@ -587,10 +682,22 @@ fn load_items_from_config(
         // If a category is specified, load only items from that category, otherwise load only categories with the same display mode as the global default
         if let Some(ref category) = category_filter {
             if let Some(category_config) = config.categories.get(category) {
-                let effective_display = category_config
-                    .display
-                    .clone()
-                    .unwrap_or(config.display.clone());
+                // 优先使用命令行参数指定的显示模式
+                let effective_display = if let Some(display_str) = &display_arg {
+                    match display_str.as_str() {
+                        "picture" => DisplayMode::Picture,
+                        "text" => DisplayMode::Text,
+                        _ => category_config
+                            .display
+                            .clone()
+                            .unwrap_or(config.display.clone()),
+                    }
+                } else {
+                    category_config
+                        .display
+                        .clone()
+                        .unwrap_or(config.display.clone())
+                };
                 let effective_source = category_config
                     .source
                     .clone()
@@ -639,16 +746,29 @@ fn load_items_from_config(
         } else {
             // Load items only from categories that match the global default display mode
             for (category_name, category_config) in &config.categories {
-                let effective_display = category_config
-                    .display
-                    .clone()
-                    .unwrap_or(config.display.clone());
+                // 优先使用命令行参数指定的显示模式
+                let effective_display = if let Some(display_str) = &display_arg {
+                    match display_str.as_str() {
+                        "picture" => DisplayMode::Picture,
+                        "text" => DisplayMode::Text,
+                        _ => category_config
+                            .display
+                            .clone()
+                            .unwrap_or(config.display.clone()),
+                    }
+                } else {
+                    category_config
+                        .display
+                        .clone()
+                        .unwrap_or(config.display.clone())
+                };
                 let effective_source = category_config
                     .source
                     .clone()
                     .unwrap_or(config.source.clone());
 
-                if effective_display == config.display {
+                // 如果有命令行参数，加载所有 categories；否则只加载匹配全局模式的
+                if display_arg.is_some() || effective_display == config.display {
                     match effective_source {
                         SourceMode::Config => {
                             for (key, value) in &category_config.entries {

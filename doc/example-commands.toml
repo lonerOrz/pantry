@@ -5,6 +5,8 @@ display = "picture"
 # Commands category - uses default "text" display mode since no display is specified
 [commands]
 display = "text"
+
+[commands.entries]
 "Shutdown" = "shutdown now"
 "Reboot" = "reboot"
 "Lock Screen" = "loginctl lock-session"
@@ -13,9 +15,9 @@ display = "text"
 "Mute Toggle" = "pactl set-sink-mute @DEFAULT_SINK@ toggle"
 "Screenshot" = "gnome-screenshot"
 "Record Screen" = "gnome-screenshot --record"
-"xxx" = "I want to offer this for free for anyone to use. It’s a simple go binary in a docker image (to make it easy to self-hosting and test locally) but it needs to live on the internet."
+"xxx" = "I want to offer this for free for anyone to use. It's a simple go binary in a docker image (to make it easy to self-hosting and test locally) but it needs to live on the internet."
 "yyy" = """
-Even if the signaling server is manipulated, to hook up two peers which shouldn’t be connected, the user won’t be able to execute commands unless they can provide a valid OTP.
+Even if the signaling server is manipulated, to hook up two peers which shouldn't be connected, the user won't be able to execute commands unless they can provide a valid OTP.
 Better still the Signaling server (which I run) is never sent either the OTP or the OTP Secret used to validate each OTP.
 This validation happens between two peers you own (Actions VM and your Browser).
 """
@@ -23,11 +25,15 @@ This validation happens between two peers you own (Actions VM and your Browser).
 # Live wallpapers category - explicitly set to "picture" display mode
 [live]
 display = "picture"
+
+[live.entries]
 "wallpapers" = "~/Pictures/wallpapers/ja/"
 
 [clip]
 display = "picture"
 source = "command"
-"history" = """
-cliphist list | awk '{print $1}' | sort -n | tail -n 10 | xargs -L 1 cliphist_transform.sh
+
+[clip.entries]
+"test_source" = """
+echo -e "Option 1\nOption 2\nOption 3"
 """

@@ -78,6 +78,24 @@ Options:
 
 - `-f, --config`: Configuration file path (defaults to `~/.config/pantry/config.toml`)
 - `-c, --category`: Specify the category to load (load only categories matching the global display mode if not specified)
+- `-d, --display`: Display mode: text or picture (overrides config file setting)
+
+## Examples
+
+Use with piped input:
+```bash
+echo -e "Option 1\nOption 2\nOption 3" | pantry
+```
+
+Force picture mode (use with image paths):
+```bash
+pantry -f pictures.toml -d picture
+```
+
+Force text mode (use with URLs or text):
+```bash
+pantry -f bookmarks.toml -d text
+```
 
 ## Documentation
 
