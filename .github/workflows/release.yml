@@ -130,12 +130,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libgtk-4-dev \
-            pkg-config
+            pkg-config \
+            ffmpeg
 
       - name: Install macOS Dependencies
         if: ${{ runner.os == 'macOS' }}
         run: |
-          brew install gtk4 glib pango gdk-pixbuf cairo graphene pkg-config
+          brew install gtk4 glib pango gdk-pixbuf cairo graphene pkg-config ffmpeg
 
       - name: Build Release Binary
         run: |
