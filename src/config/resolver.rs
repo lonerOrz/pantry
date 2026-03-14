@@ -6,21 +6,18 @@ pub fn resolve_display_mode(
     category_display: &Option<DisplayMode>,
     global_display: &DisplayMode,
 ) -> DisplayMode {
-    // 优先使用命令行参数
     if let Some(display_str) = display_arg {
         match display_str.as_str() {
             "picture" => return DisplayMode::Picture,
             "text" => return DisplayMode::Text,
-            _ => {} // 如果不是有效的显示模式，则继续使用配置文件
+            _ => {}
         }
     }
 
-    // 其次使用类别设置
     if let Some(cat_display) = category_display {
         return cat_display.clone();
     }
 
-    // 然后使用全局设置
     global_display.clone()
 }
 

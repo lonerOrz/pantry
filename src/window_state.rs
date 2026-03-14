@@ -12,8 +12,8 @@ pub struct WindowState {
 impl Default for WindowState {
     fn default() -> Self {
         WindowState {
-            width: 1200,
-            height: 800,
+            width: crate::constants::DEFAULT_WINDOW_WIDTH,
+            height: crate::constants::DEFAULT_WINDOW_HEIGHT,
             maximized: false,
         }
     }

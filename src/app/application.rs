@@ -27,10 +27,6 @@ pub struct Args {
     /// Display mode: text or picture
     #[arg(short = 'd', long = "display")]
     pub display: Option<String>,
-
-    /// Preview display: text or image (now read from config file, this parameter is deprecated)
-    #[arg(long = "preview", hide = true, default_value = "auto")]
-    pub preview_mode: String,
 }
 
 pub enum InputMode {
@@ -161,7 +157,6 @@ impl PantryApp {
                     if let Some(ref filter) = category_filter {
                         *name == filter
                     } else {
-                        // If no category filter, load all categories (or match global display mode)
                         display_arg.is_some()
                             || cat_cfg
                                 .display
@@ -174,9 +169,9 @@ impl PantryApp {
 
             // Load items from each category
             for (category_name, category_config) in categories_to_load {
-                let effective_display = resolve_display_mode(
+                let effective_display = crate::config::resolve_display_mode(
                     &display_arg,
-                    category_config.display.as_ref(),
+                    &category_config.display,
                     &config.display,
                 );
                 let effective_source = category_config
@@ -227,23 +222,6 @@ impl PantryApp {
                 glib::ControlFlow::Break
             });
         });
-    }
-}
-
-/// Resolve display mode from command line arg, category config, and global config
-fn resolve_display_mode(
-    display_arg: &Option<String>,
-    category_display: Option<&DisplayMode>,
-    global_display: &DisplayMode,
-) -> DisplayMode {
-    if let Some(display_str) = display_arg {
-        match display_str.as_str() {
-            "picture" => DisplayMode::Picture,
-            "text" => DisplayMode::Text,
-            _ => category_display.cloned().unwrap_or_else(|| global_display.clone()),
-        }
-    } else {
-        category_display.cloned().unwrap_or_else(|| global_display.clone())
     }
 }
 
@@ -320,7 +298,6 @@ pub fn get_default_config_path() -> String {
     config_dir.join("config.toml").to_string_lossy().to_string()
 }
 
-// Helper function to execute commands and return output
 fn execute_command(command: &str) -> Result<String, Box<dyn std::error::Error>> {
     let output = Command::new("sh").arg("-c").arg(command).output()?;
 

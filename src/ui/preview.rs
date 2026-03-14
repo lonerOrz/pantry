@@ -78,6 +78,9 @@ impl PreviewArea {
     }
 
     pub fn update_with_content(&self, item: &Item) {
+        // 默认显示详细信息区域，文本模式会隐藏它
+        self.details_scrolled.set_visible(true);
+
         match item.source {
             crate::config::SourceMode::Dynamic => self.update_with_dynamic_content(item),
             _ => match item.display {
@@ -95,8 +98,75 @@ impl PreviewArea {
         scrolled.set_child(Some(widget));
     }
 
+    /// Check if cache should be used (exists and is newer than original)
+    fn should_use_cache(&self, cache_path: &std::path::Path, original_path: &std::path::Path) -> bool {
+        if !cache_path.exists() {
+            return false;
+        }
+
+        match (
+            original_path.metadata().and_then(|m| m.modified()),
+            cache_path.metadata().and_then(|m| m.modified()),
+        ) {
+            (Ok(original_modified), Ok(cache_metadata)) => cache_metadata >= original_modified,
+            _ => false,
+        }
+    }
+
+    /// Load image from cache and display it
+    fn load_image_from_cache(&self, cache_path: &std::path::Path, task_id: u64, path_str: &str) {
+        let pixbuf_result = Pixbuf::from_file_at_scale(
+            cache_path,
+            crate::constants::IMAGE_PREVIEW_WIDTH,
+            crate::constants::IMAGE_PREVIEW_HEIGHT,
+            true,
+        );
+
+        let content_scrolled_clone = self.content_scrolled.clone();
+        let current_loading_path_clone = self.current_loading_path.clone();
+        let path_str_clone = path_str.to_string();
+        let current_task_id_clone = self.current_task_id.clone();
+
+        glib::idle_add_local(move || {
+            if current_task_id_clone.load(Ordering::SeqCst) != task_id {
+                return glib::ControlFlow::Break;
+            }
+
+            content_scrolled_clone.set_child(None::<&gtk4::Widget>);
+
+            if let Ok(ref pixbuf) = pixbuf_result {
+                let picture = Picture::for_pixbuf(pixbuf);
+                picture.set_halign(Align::Center);
+                picture.set_valign(Align::Center);
+                picture.set_hexpand(true);
+                picture.set_vexpand(true);
+                Self::set_scrolled_content(&content_scrolled_clone, &picture);
+            } else {
+                let error_label = Label::new(Some("Failed to load image"));
+                error_label.set_halign(Align::Center);
+                error_label.set_valign(Align::Center);
+                error_label.set_hexpand(true);
+                error_label.set_vexpand(true);
+                Self::set_scrolled_content(&content_scrolled_clone, &error_label);
+            }
+
+            if let Ok(mut current_path) = current_loading_path_clone.lock() {
+                if current_path.as_ref() == Some(&path_str_clone) {
+                    *current_path = None;
+                }
+            }
+
+            glib::ControlFlow::Break
+        });
+    }
+
     fn update_with_dynamic_content(&self, item: &Item) {
-        let preview_cmd = format!("cliphist decode {}", item.value);
+        // Use preview_template if available, otherwise default to cliphist decode
+        let preview_cmd = if let Some(ref template) = item.preview_template {
+            template.replace("{}", &item.value)
+        } else {
+            format!("cliphist decode {}", item.value)
+        };
 
         match std::process::Command::new("sh")
             .arg("-c")
@@ -138,6 +208,9 @@ impl PreviewArea {
 
                     if temp_file.write_all(&output.stdout).is_ok() {
                         let path_str = temp_file.path().to_string_lossy().to_string();
+
+                        // 图片模式：显示详细信息区域
+                        self.details_scrolled.set_visible(true);
 
                         let details_text = format!(
                             "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Path:</b> {}",
@@ -191,18 +264,21 @@ impl PreviewArea {
                         Self::set_scrolled_content(&self.content_scrolled, &error_label);
                     }
                 } else {
-                    let content = String::from_utf8_lossy(&output.stdout);
+                    // 文本内容：隐藏详细信息区域
+                    self.details_scrolled.set_visible(false);
+
                     let details_text = format!(
-                        "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Value:</b> {}",
+                        "<b>Title:</b> {}\n<b>Category:</b> {}",
                         glib::markup_escape_text(&item.title),
-                        glib::markup_escape_text(&item.category),
-                        glib::markup_escape_text(&content)
+                        glib::markup_escape_text(&item.category)
                     );
                     self.details_label.set_markup(&details_text);
 
                     let adjustment = self.details_scrolled.vadjustment();
                     adjustment.set_value(0.0);
                     self.clear_content();
+
+                    let content = String::from_utf8_lossy(&output.stdout);
 
                     let text_view = gtk4::TextView::new();
                     text_view.set_editable(false);
@@ -230,6 +306,9 @@ impl PreviewArea {
                 }
             }
             _ => {
+                // 错误情况：显示详细信息区域
+                self.details_scrolled.set_visible(true);
+
                 let details_text = format!(
                     "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Error:</b> Failed to execute preview command",
                     glib::markup_escape_text(&item.title),
@@ -250,6 +329,9 @@ impl PreviewArea {
     }
 
     fn update_with_image_content(&self, item: &Item) {
+        // 图片模式：显示详细信息区域
+        self.details_scrolled.set_visible(true);
+
         let path = std::path::Path::new(&item.value);
         if !path.exists() || !path.is_file() {
             self.update_with_text_content(item);
@@ -311,55 +393,10 @@ impl PreviewArea {
             crate::utils::path_to_safe_filename(&expanded_path)
         ));
 
-        if cache_path.exists() {
-            if let (Ok(original_modified), Ok(cache_metadata)) = (
-                expanded_path.metadata().and_then(|m| m.modified()),
-                cache_path.metadata().and_then(|m| m.modified()),
-            ) {
-                if cache_metadata >= original_modified {
-                    let pixbuf_result = Pixbuf::from_file_at_scale(&cache_path, 800, 600, true);
-
-                    glib::idle_add_local({
-                        let content_scrolled_clone = self.content_scrolled.clone();
-                        let current_loading_path_clone = self.current_loading_path.clone();
-                        let path_str_clone = path_str.clone();
-                        let current_task_id_clone = self.current_task_id.clone();
-
-                        move || {
-                            if current_task_id_clone.load(Ordering::SeqCst) != task_id {
-                                return glib::ControlFlow::Break;
-                            }
-
-                            content_scrolled_clone.set_child(None::<&gtk4::Widget>);
-
-                            if let Ok(ref pixbuf) = pixbuf_result {
-                                let picture = Picture::for_pixbuf(pixbuf);
-                                picture.set_halign(Align::Center);
-                                picture.set_valign(Align::Center);
-                                picture.set_hexpand(true);
-                                picture.set_vexpand(true);
-                                Self::set_scrolled_content(&content_scrolled_clone, &picture);
-                            } else {
-                                let error_label = Label::new(Some("Failed to load image"));
-                                error_label.set_halign(Align::Center);
-                                error_label.set_valign(Align::Center);
-                                error_label.set_hexpand(true);
-                                error_label.set_vexpand(true);
-                                Self::set_scrolled_content(&content_scrolled_clone, &error_label);
-                            }
-
-                            if let Ok(mut current_path) = current_loading_path_clone.lock() {
-                                if current_path.as_ref() == Some(&path_str_clone) {
-                                    *current_path = None;
-                                }
-                            }
-
-                            glib::ControlFlow::Break
-                        }
-                    });
-                    return;
-                }
-            }
+        // Try to load from cache if it exists and is up-to-date
+        if self.should_use_cache(&cache_path, &expanded_path) {
+            self.load_image_from_cache(&cache_path, task_id, &path_str);
+            return;
         }
 
         let content_scrolled_clone_for_async = self.content_scrolled.clone();
@@ -382,7 +419,12 @@ impl PreviewArea {
                 return;
             }
 
-            let result = Pixbuf::from_file_at_scale(&expanded_path_clone, 800, 600, true);
+            let result = Pixbuf::from_file_at_scale(
+                &expanded_path_clone,
+                crate::constants::IMAGE_PREVIEW_WIDTH,
+                crate::constants::IMAGE_PREVIEW_HEIGHT,
+                true,
+            );
 
             if let Ok(ref pixbuf) = result {
                 let format = match expanded_path_clone.extension().and_then(|s| s.to_str()) {
@@ -445,33 +487,8 @@ impl PreviewArea {
     }
 
     fn update_with_text_content(&self, item: &Item) {
-        let display_value = if item.value.chars().count() > 100 {
-            let mut truncated = String::new();
-            for (i, ch) in item.value.chars().enumerate() {
-                if i >= 100 {
-                    truncated.push_str("...");
-                    break;
-                }
-                truncated.push(ch);
-            }
-            truncated
-        } else {
-            item.value.clone()
-        };
-
-        let details_text = format!(
-            "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Value:</b> {}",
-            glib::markup_escape_text(&item.title),
-            glib::markup_escape_text(&item.category),
-            glib::markup_escape_text(&display_value)
-        );
-        self.details_label.set_markup(&details_text);
-
-        self.details_label
-            .set_ellipsize(gtk4::pango::EllipsizeMode::End);
-
-        let adjustment = self.details_scrolled.vadjustment();
-        adjustment.set_value(0.0);
+        // 文本模式：隐藏详细信息区域（预览区域已显示完整内容）
+        self.details_scrolled.set_visible(false);
 
         self.clear_content();
 
