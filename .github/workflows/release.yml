@@ -200,41 +200,10 @@ jobs:
           path: target/${{ matrix.target }}/release/*.tar.gz
           retention-days: 5
 
-  build-nix:
-    name: Build (Nix)
-    runs-on: ubuntu-latest
-    needs: [check-release, tag]
-    if: ${{ needs.check-release.outputs.should_release == 'true' }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
-
-      - name: Build Nix Package
-        run: |
-          nix build .#pantry
-
-      - name: Create Nix Release Archive
-        run: |
-          VERSION="${{ needs.check-release.outputs.version }}"
-          BINARY_NAME="pantry-v${VERSION}-nix"
-          mkdir -p "nix-release"
-          cp result/bin/pantry "nix-release/"
-          tar -czvf "$BINARY_NAME.tar.gz" -C nix-release .
-
-      - name: Upload Nix Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: nix
-          path: nix-release/*.tar.gz
-          retention-days: 5
-
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [check-release, build, build-nix]
+    needs: [check-release, build]
     if: ${{ needs.check-release.outputs.should_release == 'true' }}
     steps:
       - name: Download all artifacts
