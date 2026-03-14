@@ -50,7 +50,7 @@ impl TempConfig {
         let mut parsed_categories = HashMap::new();
 
         for (name, value) in self.categories {
-            // 解析每个类别，尝试将其作为包含 entries 的对象
+            // Parse each category, trying to deserialize it as an object with entries
             let temp_category: TempCategory = serde_json::from_value(value)?;
             parsed_categories.insert(
                 name,

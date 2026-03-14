@@ -1,6 +1,6 @@
 use crate::config::DisplayMode;
 
-/// 统一处理显示模式的优先级：命令行 > 类别设置 > 全局设置 > 默认值
+/// Unified display mode resolution with priority: command line > category > global > default
 pub fn resolve_display_mode(
     display_arg: &Option<String>,
     category_display: &Option<DisplayMode>,

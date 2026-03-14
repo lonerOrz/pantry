@@ -25,7 +25,7 @@ impl UiBuilder {
         Option<Rc<RefCell<preview::PreviewArea>>>,
         Label,
     ) {
-        // 从 stdin 读取数据
+        // Read data from stdin
         let mut stdin_data = String::new();
         if let Err(e) = std::io::stdin().read_to_string(&mut stdin_data) {
             eprintln!("Warning: Failed to read from stdin: {}", e);
@@ -39,7 +39,7 @@ impl UiBuilder {
             window.maximize();
         }
 
-        // 根据命令行参数或默认值确定显示模式
+        // Determine display mode from command line argument or default
         let display_mode = resolve_display_mode(&args.display, &None, &DisplayMode::Text);
 
         let (main_widget, listbox, preview_area_rc_opt) =
@@ -82,7 +82,7 @@ impl UiBuilder {
         let (overlay, search_label) = create_search_overlay(&main_widget);
         window.set_child(Some(&overlay));
 
-        // 从 stdin 数据创建条目
+        // Create entries from stdin data
         for line in stdin_data.lines() {
             if !line.trim().is_empty() {
                 let item = Item {
@@ -98,13 +98,13 @@ impl UiBuilder {
             }
         }
 
-        // 选择第一个项目
+        // Select first item
         if let Some(first_row) = listbox.row_at_index(0) {
             listbox.select_row(Some(&first_row));
             first_row.grab_focus();
         }
 
-        // 如果是图片模式，设置预览更新
+        // If picture mode, setup preview updates
         if matches!(display_mode, DisplayMode::Picture) {
             let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
             let listbox_clone = listbox.clone();

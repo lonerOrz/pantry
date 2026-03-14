@@ -15,12 +15,12 @@ impl Item {
         ItemBuilder::new()
     }
 
-    /// 判断此项目是否在图片模式下显示
+    /// Check if this item is in picture mode
     pub fn is_picture_mode(&self) -> bool {
         matches!(self.display, DisplayMode::Picture)
     }
 
-    /// 获取显示的文本内容
+    /// Get the display text content
     pub fn display_text(&self) -> String {
         self.value.clone()
     }
@@ -83,11 +83,11 @@ impl ItemBuilder {
     }
 }
 
-/// 项目处理器：处理图片目录展开等逻辑
+/// Item processor: handles directory expansion for picture mode, etc.
 pub struct ItemProcessor;
 
 impl ItemProcessor {
-    /// 处理项目用于显示（展开目录等）
+    /// Process item for display (expand directories, etc.)
     pub fn process_for_display(item: &Item) -> Vec<Item> {
         if matches!(item.display, DisplayMode::Picture) {
             let expanded_path = crate::utils::expand_tilde(&item.value);

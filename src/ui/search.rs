@@ -1,5 +1,5 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// 搜索状态管理
+/// Search state management
 pub type SearchState = Rc<RefCell<String>>;

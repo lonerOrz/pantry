@@ -158,10 +158,7 @@ impl PantryApp {
                         *name == filter
                     } else {
                         display_arg.is_some()
-                            || cat_cfg
-                                .display
-                                .as_ref()
-                                .unwrap_or(&config.display)
+                            || cat_cfg.display.as_ref().unwrap_or(&config.display)
                                 == &config.display
                     }
                 })

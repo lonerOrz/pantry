@@ -78,7 +78,7 @@ impl PreviewArea {
     }
 
     pub fn update_with_content(&self, item: &Item) {
-        // 默认显示详细信息区域，文本模式会隐藏它
+        // Show details area by default, text mode will hide it
         self.details_scrolled.set_visible(true);
 
         match item.source {
@@ -98,8 +98,42 @@ impl PreviewArea {
         scrolled.set_child(Some(widget));
     }
 
+    /// Create a non-editable text view with standard styling
+    fn create_text_view(text: &str) -> TextView {
+        let text_view = TextView::new();
+        text_view.set_editable(false);
+        text_view.set_cursor_visible(false);
+        text_view.set_wrap_mode(gtk4::WrapMode::Word);
+        text_view.set_left_margin(crate::constants::TEXT_MARGIN);
+        text_view.set_right_margin(crate::constants::TEXT_MARGIN);
+        text_view.set_top_margin(crate::constants::TEXT_MARGIN);
+        text_view.set_bottom_margin(crate::constants::TEXT_MARGIN);
+
+        let buffer = text_view.buffer();
+        buffer.set_text(text);
+
+        text_view.set_hexpand(true);
+        text_view.set_vexpand(true);
+        text_view
+    }
+
+    /// Create a scrolled window with standard styling for text content
+    fn create_text_scrolled(text_view: &TextView) -> ScrolledWindow {
+        let scrolled_window = gtk4::ScrolledWindow::new();
+        scrolled_window.set_child(Some(text_view));
+        scrolled_window.set_hexpand(true);
+        scrolled_window.set_vexpand(true);
+        scrolled_window.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
+        scrolled_window.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
+        scrolled_window
+    }
+
     /// Check if cache should be used (exists and is newer than original)
-    fn should_use_cache(&self, cache_path: &std::path::Path, original_path: &std::path::Path) -> bool {
+    fn should_use_cache(
+        &self,
+        cache_path: &std::path::Path,
+        original_path: &std::path::Path,
+    ) -> bool {
         if !cache_path.exists() {
             return false;
         }
@@ -209,7 +243,7 @@ impl PreviewArea {
                     if temp_file.write_all(&output.stdout).is_ok() {
                         let path_str = temp_file.path().to_string_lossy().to_string();
 
-                        // 图片模式：显示详细信息区域
+                        // Image mode: show details area
                         self.details_scrolled.set_visible(true);
 
                         let details_text = format!(
@@ -238,6 +272,7 @@ impl PreviewArea {
                                 picture.set_vexpand(true);
                                 picture.add_css_class("preview-image");
                                 Self::set_scrolled_content(&self.content_scrolled, &picture);
+                                // Intentionally leak temp_file to keep it alive for the duration of the preview
                                 std::mem::forget(temp_file);
                             }
                             Err(_) => {
@@ -264,7 +299,7 @@ impl PreviewArea {
                         Self::set_scrolled_content(&self.content_scrolled, &error_label);
                     }
                 } else {
-                    // 文本内容：隐藏详细信息区域
+                    // Text content: hide details area
                     self.details_scrolled.set_visible(false);
 
                     let details_text = format!(
@@ -280,33 +315,14 @@ impl PreviewArea {
 
                     let content = String::from_utf8_lossy(&output.stdout);
 
-                    let text_view = gtk4::TextView::new();
-                    text_view.set_editable(false);
-                    text_view.set_cursor_visible(false);
-                    text_view.set_wrap_mode(gtk4::WrapMode::Word);
-                    text_view.set_left_margin(10);
-                    text_view.set_right_margin(10);
-                    text_view.set_top_margin(10);
-                    text_view.set_bottom_margin(10);
-
-                    let buffer = text_view.buffer();
-                    buffer.set_text(&content);
-
-                    text_view.set_hexpand(true);
-                    text_view.set_vexpand(true);
-
-                    let scrolled_window = gtk4::ScrolledWindow::new();
-                    scrolled_window.set_child(Some(&text_view));
-                    scrolled_window.set_hexpand(true);
-                    scrolled_window.set_vexpand(true);
-                    scrolled_window.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
-                    scrolled_window.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
+                    let text_view = Self::create_text_view(&content);
+                    let scrolled_window = Self::create_text_scrolled(&text_view);
 
                     Self::set_scrolled_content(&self.content_scrolled, &scrolled_window);
                 }
             }
             _ => {
-                // 错误情况：显示详细信息区域
+                // Error case: show details area
                 self.details_scrolled.set_visible(true);
 
                 let details_text = format!(
@@ -329,7 +345,7 @@ impl PreviewArea {
     }
 
     fn update_with_image_content(&self, item: &Item) {
-        // 图片模式：显示详细信息区域
+        // Image mode: show details area
         self.details_scrolled.set_visible(true);
 
         let path = std::path::Path::new(&item.value);
@@ -487,32 +503,13 @@ impl PreviewArea {
     }
 
     fn update_with_text_content(&self, item: &Item) {
-        // 文本模式：隐藏详细信息区域（预览区域已显示完整内容）
+        // Text mode: hide details area (full content shown in preview area)
         self.details_scrolled.set_visible(false);
 
         self.clear_content();
 
-        let text_view = TextView::new();
-        text_view.set_editable(false);
-        text_view.set_cursor_visible(false);
-        text_view.set_wrap_mode(gtk4::WrapMode::Word);
-        text_view.set_left_margin(10);
-        text_view.set_right_margin(10);
-        text_view.set_top_margin(10);
-        text_view.set_bottom_margin(10);
-
-        let buffer = text_view.buffer();
-        buffer.set_text(&item.value);
-
-        text_view.set_hexpand(true);
-        text_view.set_vexpand(true);
-
-        let scrolled_window = gtk4::ScrolledWindow::new();
-        scrolled_window.set_child(Some(&text_view));
-        scrolled_window.set_hexpand(true);
-        scrolled_window.set_vexpand(true);
-        scrolled_window.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
-        scrolled_window.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
+        let text_view = Self::create_text_view(&item.value);
+        let scrolled_window = Self::create_text_scrolled(&text_view);
 
         Self::set_scrolled_content(&self.content_scrolled, &scrolled_window);
     }
