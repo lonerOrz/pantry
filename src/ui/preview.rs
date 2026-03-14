@@ -415,11 +415,9 @@ impl PreviewArea {
             return;
         }
 
-        let content_scrolled_clone_for_async = self.content_scrolled.clone();
-        let current_loading_path_clone = self.current_loading_path.clone();
-        let current_task_id_clone = self.current_task_id.clone();
         let cache_path_clone = cache_path.clone();
         let expanded_path_clone = expanded_path.clone();
+        let content_scrolled = self.content_scrolled.clone();
 
         self.clear_content();
 
@@ -430,75 +428,57 @@ impl PreviewArea {
         loading_label.set_vexpand(true);
         Self::set_scrolled_content(&self.content_scrolled, &loading_label);
 
-        glib::spawn_future_local(async move {
-            if current_task_id_clone.load(Ordering::SeqCst) != task_id {
-                return;
-            }
+        // Load image using glib async context
+        // Note: Pixbuf::from_file_at_scale is synchronous but typically fast for cached images
+        let result = Pixbuf::from_file_at_scale(
+            &expanded_path_clone,
+            crate::constants::IMAGE_PREVIEW_WIDTH,
+            crate::constants::IMAGE_PREVIEW_HEIGHT,
+            true,
+        );
 
-            let result = Pixbuf::from_file_at_scale(
-                &expanded_path_clone,
-                crate::constants::IMAGE_PREVIEW_WIDTH,
-                crate::constants::IMAGE_PREVIEW_HEIGHT,
-                true,
-            );
+        // Save to cache if successful
+        if let Ok(ref pixbuf) = result {
+            let format = match expanded_path_clone.extension().and_then(|s| s.to_str()) {
+                Some(ext)
+                    if ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("jpeg") =>
+                {
+                    "jpeg"
+                }
+                Some(ext) if ext.eq_ignore_ascii_case("png") => "png",
+                Some(ext) if ext.eq_ignore_ascii_case("bmp") => "bmp",
+                Some(ext)
+                    if ext.eq_ignore_ascii_case("tiff") || ext.eq_ignore_ascii_case("tif") =>
+                {
+                    "tiff"
+                }
+                Some(ext) if ext.eq_ignore_ascii_case("webp") => "webp",
+                _ => "png",
+            };
+            let _ = pixbuf.savev(&cache_path_clone, format, &[]);
+        }
+
+        // Update UI on main thread
+        glib::idle_add_local(move || {
+            content_scrolled.set_child(None::<&gtk4::Widget>);
 
             if let Ok(ref pixbuf) = result {
-                let format = match expanded_path_clone.extension().and_then(|s| s.to_str()) {
-                    Some(ext)
-                        if ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("jpeg") =>
-                    {
-                        "jpeg"
-                    }
-                    Some(ext) if ext.eq_ignore_ascii_case("png") => "png",
-                    Some(ext) if ext.eq_ignore_ascii_case("bmp") => "bmp",
-                    Some(ext)
-                        if ext.eq_ignore_ascii_case("tiff") || ext.eq_ignore_ascii_case("tif") =>
-                    {
-                        "tiff"
-                    }
-                    Some(ext) if ext.eq_ignore_ascii_case("webp") => "webp",
-                    _ => "png",
-                };
-                let _ = pixbuf.savev(&cache_path_clone, format, &[]);
+                let picture = Picture::for_pixbuf(pixbuf);
+                picture.set_halign(Align::Center);
+                picture.set_valign(Align::Center);
+                picture.set_hexpand(true);
+                picture.set_vexpand(true);
+                content_scrolled.set_child(Some(&picture));
+            } else {
+                let error_label = Label::new(Some("Failed to load image"));
+                error_label.set_halign(Align::Center);
+                error_label.set_valign(Align::Center);
+                error_label.set_hexpand(true);
+                error_label.set_vexpand(true);
+                content_scrolled.set_child(Some(&error_label));
             }
 
-            let pixbuf_result = result;
-
-            if current_task_id_clone.load(Ordering::SeqCst) != task_id {
-                return;
-            }
-
-            glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
-                if current_task_id_clone.load(Ordering::SeqCst) != task_id {
-                    return glib::ControlFlow::Break;
-                }
-
-                content_scrolled_clone_for_async.set_child(None::<&gtk4::Widget>);
-
-                if let Ok(ref pixbuf) = pixbuf_result {
-                    let picture = Picture::for_pixbuf(pixbuf);
-                    picture.set_halign(Align::Center);
-                    picture.set_valign(Align::Center);
-                    picture.set_hexpand(true);
-                    picture.set_vexpand(true);
-                    Self::set_scrolled_content(&content_scrolled_clone_for_async, &picture);
-                } else {
-                    let error_label = Label::new(Some("Failed to load image"));
-                    error_label.set_halign(Align::Center);
-                    error_label.set_valign(Align::Center);
-                    error_label.set_hexpand(true);
-                    error_label.set_vexpand(true);
-                    Self::set_scrolled_content(&content_scrolled_clone_for_async, &error_label);
-                }
-
-                if let Ok(mut current_path) = current_loading_path_clone.lock() {
-                    if current_path.as_ref() == Some(&path_str) {
-                        *current_path = None;
-                    }
-                }
-
-                glib::ControlFlow::Break
-            });
+            glib::ControlFlow::Break
         });
     }
 
