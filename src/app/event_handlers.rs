@@ -1,4 +1,4 @@
-use crate::app::app::Args;
+use crate::app::application::Args;
 use crate::app::preview_manager::PreviewManager;
 use gtk4::{
     prelude::*, ApplicationWindow, EventControllerKey, Label, ListBox, ListBoxRow, PropagationPhase,
@@ -12,7 +12,7 @@ impl EventHandler {
         listbox: &ListBox,
         query_state: crate::ui::search::SearchState,
         search_label: Label,
-        args: &Args,
+        _args: &Args,
         preview_area_rc_opt: Option<
             std::rc::Rc<std::cell::RefCell<crate::ui::preview::PreviewArea>>,
         >,
@@ -171,18 +171,4 @@ pub fn handle_search_input(
         return glib::Propagation::Stop;
     }
     glib::Propagation::Proceed
-}
-
-pub fn fuzzy_match(text: &str, pattern: &str) -> bool {
-    let text_chars: Vec<char> = text.chars().collect();
-    let pattern_chars: Vec<char> = pattern.chars().collect();
-    let mut text_idx = 0;
-    let mut pattern_idx = 0;
-    while text_idx < text_chars.len() && pattern_idx < pattern_chars.len() {
-        if text_chars[text_idx] == pattern_chars[pattern_idx] {
-            pattern_idx += 1;
-        }
-        text_idx += 1;
-    }
-    pattern_idx == pattern_chars.len()
 }

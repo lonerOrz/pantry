@@ -1,5 +1,5 @@
 use clap::Parser;
-use gtk4::{prelude::*, Application, ApplicationWindow, ListBox, ScrolledWindow};
+use gtk4::{prelude::*, Application, ListBox};
 use std::cell::RefCell;
 use std::process::Command;
 use std::rc::Rc;
@@ -17,7 +17,7 @@ use crate::window_state::WindowState;
 )]
 pub struct Args {
     /// Configuration file path [default: ~/.config/pantry/config.toml]
-    #[arg(short = 'f', long, default_value_t = crate::app::app::get_default_config_path())]
+    #[arg(short = 'f', long, default_value_t = crate::app::application::get_default_config_path())]
     pub config: String,
 
     /// Specify the category to load (load all categories if not specified)
@@ -120,24 +120,6 @@ impl PantryApp {
         }
     }
 
-    fn wrap_in_scroll(&self, child: &impl gtk4::prelude::IsA<gtk4::Widget>) -> ScrolledWindow {
-        let scrolled = ScrolledWindow::new();
-        scrolled.set_child(Some(child));
-        scrolled.set_vexpand(true);
-        scrolled
-    }
-
-    fn save_current_window_state(&self, window: &ApplicationWindow) {
-        let maximized = window.is_maximized();
-        let (width, height) = window.default_size();
-        let state = WindowState {
-            width,
-            height,
-            maximized,
-        };
-        state.save();
-    }
-
     fn load_items_from_config(
         &self,
         listbox: &ListBox,
@@ -236,10 +218,12 @@ impl PantryApp {
                         SourceMode::Dynamic => {
                             // Dynamic mode: execute list command to get entries, template for preview
                             for (list_cmd, preview_template) in &category_config.entries {
-                                if let Ok(dynamic_items) = crate::domain::item::ItemProcessor::process_dynamic_source(
-                                    list_cmd,
-                                    preview_template,
-                                ) {
+                                if let Ok(dynamic_items) =
+                                    crate::domain::item::ItemProcessor::process_dynamic_source(
+                                        list_cmd,
+                                        preview_template,
+                                    )
+                                {
                                     items.extend(dynamic_items);
                                 }
                             }
@@ -310,10 +294,12 @@ impl PantryApp {
                             SourceMode::Dynamic => {
                                 // Dynamic mode: execute list command to get entries, template for preview
                                 for (list_cmd, preview_template) in &category_config.entries {
-                                    if let Ok(dynamic_items) = crate::domain::item::ItemProcessor::process_dynamic_source(
-                                        list_cmd,
-                                        preview_template,
-                                    ) {
+                                    if let Ok(dynamic_items) =
+                                        crate::domain::item::ItemProcessor::process_dynamic_source(
+                                            list_cmd,
+                                            preview_template,
+                                        )
+                                    {
                                         items.extend(dynamic_items);
                                     }
                                 }
@@ -385,7 +371,3 @@ fn execute_command(command: &str) -> Result<String, Box<dyn std::error::Error>> 
         Err(format!("Command failed: {}", error_msg).into())
     }
 }
-
-use std::sync::{Mutex, OnceLock};
-
-static LAST_PREVIEW_UPDATE: OnceLock<Mutex<u128>> = OnceLock::new();

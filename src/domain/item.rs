@@ -25,6 +25,7 @@ impl Item {
     }
 }
 
+#[derive(Default)]
 pub struct ItemBuilder {
     title: Option<String>,
     value: Option<String>,
@@ -35,13 +36,7 @@ pub struct ItemBuilder {
 
 impl ItemBuilder {
     pub fn new() -> Self {
-        ItemBuilder {
-            title: None,
-            value: None,
-            category: None,
-            display: None,
-            source: None,
-        }
+        ItemBuilder::default()
     }
 
     pub fn title(mut self, title: String) -> Self {
@@ -129,27 +124,10 @@ impl ItemProcessor {
         }
     }
 
-    /// 从配置条目创建项目
-    pub fn from_config_entry(
-        key: &str,
-        value: &str,
-        category: &str,
-        display: DisplayMode,
-        source: SourceMode,
-    ) -> Item {
-        Item {
-            title: key.to_string(),
-            value: value.to_string(),
-            category: category.to_string(),
-            display,
-            source,
-        }
-    }
-
     /// Process dynamic source - execute list command and create items
     pub fn process_dynamic_source(
         list_command: &str,
-        preview_template: &str,
+        _preview_template: &str,
     ) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
         // Execute the list command to get entries
         let output = std::process::Command::new("sh")
@@ -158,7 +136,11 @@ impl ItemProcessor {
             .output()?;
 
         if !output.status.success() {
-            return Err(format!("List command failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+            return Err(format!(
+                "List command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
         }
 
         // Sanitize output to remove null bytes which cause GTK errors
@@ -188,7 +170,7 @@ impl ItemProcessor {
 
             items.push(Item {
                 title: sanitized_display_text,
-                value: sanitized_id,  // ID as value for preview command
+                value: sanitized_id, // ID as value for preview command
                 category: "dynamic".to_string(),
                 display: DisplayMode::Text, // Will be determined dynamically
                 source: SourceMode::Dynamic,

@@ -86,7 +86,7 @@ impl PreviewArea {
             _ => match item.display {
                 crate::config::DisplayMode::Picture => self.update_with_image_content(item),
                 crate::config::DisplayMode::Text => self.update_with_text_content(item),
-            }
+            },
         }
     }
 
@@ -96,14 +96,20 @@ impl PreviewArea {
 
         let preview_cmd = format!("cliphist decode {}", item.value);
 
-        match std::process::Command::new("sh").arg("-c").arg(&preview_cmd).output() {
+        match std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&preview_cmd)
+            .output()
+        {
             Ok(output) if output.status.success() => {
                 // Check if the output contains binary data (contains null bytes or other control chars)
-                let is_binary = output.stdout.iter().any(|&b| b == 0 || (b < 32 && b != b'\n' && b != b'\t'));
+                let is_binary = output
+                    .stdout
+                    .iter()
+                    .any(|&b| b == 0 || (b < 32 && b != b'\n' && b != b'\t'));
 
                 if is_binary {
                     // Binary content - save to temp file and display as image
-                    use std::fs::File;
                     use std::io::Write;
                     use tempfile::NamedTempFile;
 
@@ -123,7 +129,9 @@ impl PreviewArea {
                                 self.image_container.remove(&child);
                             }
 
-                            let error_label = gtk4::Label::new(Some("Could not create temporary file for image preview"));
+                            let error_label = gtk4::Label::new(Some(
+                                "Could not create temporary file for image preview",
+                            ));
                             error_label.set_halign(gtk4::Align::Center);
                             error_label.set_valign(gtk4::Align::Center);
                             error_label.set_hexpand(true);
@@ -160,7 +168,7 @@ impl PreviewArea {
                             temp_file.path(),
                             crate::constants::IMAGE_PREVIEW_WIDTH,
                             crate::constants::IMAGE_PREVIEW_HEIGHT,
-                            true
+                            true,
                         ) {
                             Ok(texture) => {
                                 let picture = gtk4::Picture::for_pixbuf(&texture);
@@ -174,9 +182,12 @@ impl PreviewArea {
 
                                 // Keep the temp file alive for the duration of the preview
                                 std::mem::forget(temp_file);
-                            },
+                            }
                             Err(_) => {
-                                let error_label = gtk4::Label::new(Some(&format!("Failed to load image from temp file:\n{}", path_str)));
+                                let error_label = gtk4::Label::new(Some(&format!(
+                                    "Failed to load image from temp file:\n{}",
+                                    path_str
+                                )));
                                 error_label.set_halign(gtk4::Align::Center);
                                 error_label.set_valign(gtk4::Align::Center);
                                 error_label.set_hexpand(true);
@@ -188,7 +199,8 @@ impl PreviewArea {
                         }
                     } else {
                         // Failed to write to temp file
-                        let error_label = gtk4::Label::new(Some("Failed to write image data to temporary file"));
+                        let error_label =
+                            gtk4::Label::new(Some("Failed to write image data to temporary file"));
                         error_label.set_halign(gtk4::Align::Center);
                         error_label.set_valign(gtk4::Align::Center);
                         error_label.set_hexpand(true);
@@ -232,14 +244,14 @@ impl PreviewArea {
                     buffer.set_text(&content);
 
                     text_view.set_hexpand(true);
-                    text_view.set_vexpand(false);  // Don't expand vertically
-                    text_view.set_size_request(-1, 200);  // Limit height
+                    text_view.set_vexpand(false); // Don't expand vertically
+                    text_view.set_size_request(-1, 200); // Limit height
 
                     let scrolled_window = gtk4::ScrolledWindow::new();
                     scrolled_window.set_child(Some(&text_view));
                     scrolled_window.set_hexpand(true);
-                    scrolled_window.set_vexpand(false);  // Don't expand vertically
-                    scrolled_window.set_size_request(-1, 200);  // Limit height
+                    scrolled_window.set_vexpand(false); // Don't expand vertically
+                    scrolled_window.set_size_request(-1, 200); // Limit height
 
                     scrolled_window.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
                     scrolled_window.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
@@ -539,16 +551,5 @@ impl PreviewArea {
         scrolled_window.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
 
         self.image_container.append(&scrolled_window);
-    }
-
-    pub fn clear(&self) {
-        while let Some(child) = self.image_container.first_child() {
-            self.image_container.remove(&child);
-        }
-        self.details_label.set_text("No image selected");
-
-        if let Ok(mut current_path) = self.current_loading_path.lock() {
-            *current_path = None;
-        }
     }
 }

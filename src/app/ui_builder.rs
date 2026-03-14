@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::io::Read;
 use std::rc::Rc;
 
-use crate::app::app::Args;
+use crate::app::application::Args;
 use crate::config::{get_config_display_mode, resolve_display_mode, DisplayMode, SourceMode};
 use crate::domain::item::Item;
 use crate::ui::{list, preview, window};
@@ -295,9 +295,9 @@ fn update_preview(
     }
 
     // Attempt to update the timestamp atomically
-    if !last_update
+    if last_update
         .compare_exchange(prev_time, now, Ordering::Relaxed, Ordering::Relaxed)
-        .is_ok()
+        .is_err()
     {
         // Another thread updated the time, skip this update
         return;

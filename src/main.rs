@@ -2,8 +2,6 @@ mod app;
 mod config;
 mod constants;
 mod domain;
-mod handlers;
-mod items;
 mod services;
 mod ui;
 mod utils;
