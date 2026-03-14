@@ -156,6 +156,11 @@ impl PreviewArea {
             true,
         );
 
+        // If cache is corrupted, delete it for next time
+        if pixbuf_result.is_err() {
+            let _ = std::fs::remove_file(cache_path);
+        }
+
         let content_scrolled_clone = self.content_scrolled.clone();
         let current_loading_path_clone = self.current_loading_path.clone();
         let path_str_clone = path_str.to_string();
