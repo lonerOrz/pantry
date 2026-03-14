@@ -1,9 +1,7 @@
 use crate::domain::item::Item;
 use gdk_pixbuf::Pixbuf;
 use gtk4::prelude::*;
-use gtk4::{
-    glib, Align, Box as GtkBox, Grid, Label, Orientation, Picture, ScrolledWindow, TextView,
-};
+use gtk4::{glib, Align, Grid, Label, Picture, ScrolledWindow, TextView};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,7 +10,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 pub struct PreviewArea {
     pub container: Grid,
-    image_container: GtkBox,
+    content_scrolled: ScrolledWindow,
     details_label: Label,
     details_scrolled: ScrolledWindow,
     current_loading_path: Arc<Mutex<Option<String>>>,
@@ -29,18 +27,13 @@ impl PreviewArea {
 
         if let Err(e) = fs::create_dir_all(&cache_dir) {
             eprintln!("Warning: Failed to create cache directory: {}", e);
-            // Use fallback directory
             cache_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         }
 
-        let image_container = GtkBox::new(Orientation::Vertical, 0);
-        image_container.set_vexpand(true);
-        image_container.set_hexpand(true);
-        image_container.set_homogeneous(false);
-
         let details_label = Label::new(Some("No image selected"));
-        details_label.set_wrap(false);
+        details_label.set_wrap(true);
         details_label.set_halign(Align::Start);
+        details_label.set_valign(Align::Start);
         details_label.set_ellipsize(gtk4::pango::EllipsizeMode::None);
         details_label.add_css_class("preview-details-label");
 
@@ -49,11 +42,15 @@ impl PreviewArea {
         details_scrolled.set_vexpand(false);
         details_scrolled.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
         details_scrolled.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
-        details_scrolled.set_size_request(-1, 80);
+        details_scrolled.set_size_request(-1, 100);
         details_scrolled.add_css_class("preview-details-scrolled");
 
-        details_scrolled.set_propagate_natural_height(false);
-        details_scrolled.set_propagate_natural_width(false);
+        let content_scrolled = gtk4::ScrolledWindow::new();
+        content_scrolled.set_vexpand(true);
+        content_scrolled.set_hexpand(true);
+        content_scrolled.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
+        content_scrolled.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
+        content_scrolled.add_css_class("preview-content-scrolled");
 
         let separator = gtk4::Separator::new(gtk4::Orientation::Horizontal);
         separator.add_css_class("preview-separator");
@@ -64,13 +61,13 @@ impl PreviewArea {
         container.set_vexpand(true);
         container.set_row_spacing(0);
 
-        container.attach(&image_container, 0, 0, 1, 1);
+        container.attach(&content_scrolled, 0, 0, 1, 1);
         container.attach(&separator, 0, 1, 1, 1);
         container.attach(&details_scrolled, 0, 2, 1, 1);
 
         Self {
             container,
-            image_container,
+            content_scrolled,
             details_label,
             details_scrolled,
             current_loading_path: Arc::new(Mutex::new(None)),
@@ -90,10 +87,15 @@ impl PreviewArea {
         }
     }
 
-    fn update_with_dynamic_content(&self, item: &Item) {
-        // For dynamic items, the value field contains the ID to use in the preview command
-        // We need to execute the preview command with the ID to get the actual content
+    fn clear_content(&self) {
+        self.content_scrolled.set_child(None::<&gtk4::Widget>);
+    }
 
+    fn set_scrolled_content<W: IsA<gtk4::Widget>>(scrolled: &ScrolledWindow, widget: &W) {
+        scrolled.set_child(Some(widget));
+    }
+
+    fn update_with_dynamic_content(&self, item: &Item) {
         let preview_cmd = format!("cliphist decode {}", item.value);
 
         match std::process::Command::new("sh")
@@ -102,33 +104,25 @@ impl PreviewArea {
             .output()
         {
             Ok(output) if output.status.success() => {
-                // Check if the output contains binary data (contains null bytes or other control chars)
                 let is_binary = output
                     .stdout
                     .iter()
                     .any(|&b| b == 0 || (b < 32 && b != b'\n' && b != b'\t'));
 
                 if is_binary {
-                    // Binary content - save to temp file and display as image
                     use std::io::Write;
                     use tempfile::NamedTempFile;
 
-                    // Create a temporary file to hold the binary data
                     let mut temp_file = match NamedTempFile::new() {
                         Ok(tf) => tf,
                         Err(_) => {
-                            // If we can't create a temp file, show an error
                             let details_text = format!(
                                 "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Error:</b> Could not create temporary file",
                                 glib::markup_escape_text(&item.title),
                                 glib::markup_escape_text(&item.category)
                             );
                             self.details_label.set_markup(&details_text);
-
-                            while let Some(child) = self.image_container.first_child() {
-                                self.image_container.remove(&child);
-                            }
-
+                            self.clear_content();
                             let error_label = gtk4::Label::new(Some(
                                 "Could not create temporary file for image preview",
                             ));
@@ -137,8 +131,7 @@ impl PreviewArea {
                             error_label.set_hexpand(true);
                             error_label.set_vexpand(true);
                             error_label.add_css_class("error-label");
-
-                            self.image_container.append(&error_label);
+                            Self::set_scrolled_content(&self.content_scrolled, &error_label);
                             return;
                         }
                     };
@@ -146,7 +139,6 @@ impl PreviewArea {
                     if temp_file.write_all(&output.stdout).is_ok() {
                         let path_str = temp_file.path().to_string_lossy().to_string();
 
-                        // Update details
                         let details_text = format!(
                             "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Path:</b> {}",
                             glib::markup_escape_text(&item.title),
@@ -157,13 +149,8 @@ impl PreviewArea {
 
                         let adjustment = self.details_scrolled.vadjustment();
                         adjustment.set_value(0.0);
+                        self.clear_content();
 
-                        // Clear previous content
-                        while let Some(child) = self.image_container.first_child() {
-                            self.image_container.remove(&child);
-                        }
-
-                        // Load image from the temporary file
                         match gdk_pixbuf::Pixbuf::from_file_at_scale(
                             temp_file.path(),
                             crate::constants::IMAGE_PREVIEW_WIDTH,
@@ -177,10 +164,7 @@ impl PreviewArea {
                                 picture.set_hexpand(true);
                                 picture.set_vexpand(true);
                                 picture.add_css_class("preview-image");
-
-                                self.image_container.append(&picture);
-
-                                // Keep the temp file alive for the duration of the preview
+                                Self::set_scrolled_content(&self.content_scrolled, &picture);
                                 std::mem::forget(temp_file);
                             }
                             Err(_) => {
@@ -193,12 +177,10 @@ impl PreviewArea {
                                 error_label.set_hexpand(true);
                                 error_label.set_vexpand(true);
                                 error_label.add_css_class("error-label");
-
-                                self.image_container.append(&error_label);
+                                Self::set_scrolled_content(&self.content_scrolled, &error_label);
                             }
                         }
                     } else {
-                        // Failed to write to temp file
                         let error_label =
                             gtk4::Label::new(Some("Failed to write image data to temporary file"));
                         error_label.set_halign(gtk4::Align::Center);
@@ -206,11 +188,9 @@ impl PreviewArea {
                         error_label.set_hexpand(true);
                         error_label.set_vexpand(true);
                         error_label.add_css_class("error-label");
-
-                        self.image_container.append(&error_label);
+                        Self::set_scrolled_content(&self.content_scrolled, &error_label);
                     }
                 } else {
-                    // It's text content, display as text
                     let content = String::from_utf8_lossy(&output.stdout);
                     let details_text = format!(
                         "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Value:</b> {}",
@@ -220,16 +200,9 @@ impl PreviewArea {
                     );
                     self.details_label.set_markup(&details_text);
 
-                    self.details_label
-                        .set_ellipsize(gtk4::pango::EllipsizeMode::End);
-
                     let adjustment = self.details_scrolled.vadjustment();
                     adjustment.set_value(0.0);
-
-                    // Clear previous content
-                    while let Some(child) = self.image_container.first_child() {
-                        self.image_container.remove(&child);
-                    }
+                    self.clear_content();
 
                     let text_view = gtk4::TextView::new();
                     text_view.set_editable(false);
@@ -244,19 +217,16 @@ impl PreviewArea {
                     buffer.set_text(&content);
 
                     text_view.set_hexpand(true);
-                    text_view.set_vexpand(false); // Don't expand vertically
-                    text_view.set_size_request(-1, 200); // Limit height
+                    text_view.set_vexpand(true);
 
                     let scrolled_window = gtk4::ScrolledWindow::new();
                     scrolled_window.set_child(Some(&text_view));
                     scrolled_window.set_hexpand(true);
-                    scrolled_window.set_vexpand(false); // Don't expand vertically
-                    scrolled_window.set_size_request(-1, 200); // Limit height
-
+                    scrolled_window.set_vexpand(true);
                     scrolled_window.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
                     scrolled_window.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
 
-                    self.image_container.append(&scrolled_window);
+                    Self::set_scrolled_content(&self.content_scrolled, &scrolled_window);
                 }
             }
             _ => {
@@ -266,11 +236,7 @@ impl PreviewArea {
                     glib::markup_escape_text(&item.category)
                 );
                 self.details_label.set_markup(&details_text);
-
-                // Clear previous content
-                while let Some(child) = self.image_container.first_child() {
-                    self.image_container.remove(&child);
-                }
+                self.clear_content();
 
                 let error_label = gtk4::Label::new(Some("Failed to execute preview command"));
                 error_label.set_halign(gtk4::Align::Center);
@@ -278,17 +244,14 @@ impl PreviewArea {
                 error_label.set_hexpand(true);
                 error_label.set_vexpand(true);
                 error_label.add_css_class("error-label");
-
-                self.image_container.append(&error_label);
+                Self::set_scrolled_content(&self.content_scrolled, &error_label);
             }
         }
     }
 
     fn update_with_image_content(&self, item: &Item) {
-        // Check if the value is actually a file path that exists
         let path = std::path::Path::new(&item.value);
         if !path.exists() || !path.is_file() {
-            // Value is not a valid file path, treat as text content
             self.update_with_text_content(item);
             return;
         }
@@ -324,21 +287,18 @@ impl PreviewArea {
 
         if !expanded_path.exists() {
             glib::idle_add_local({
-                let image_container_clone = self.image_container.clone();
+                let content_scrolled_clone = self.content_scrolled.clone();
                 let path_str_clone = path_str.clone();
 
                 move || {
-                    while let Some(child) = image_container_clone.first_child() {
-                        image_container_clone.remove(&child);
-                    }
-
+                    content_scrolled_clone.set_child(None::<&gtk4::Widget>);
                     let error_label =
                         Label::new(Some(&format!("File does not exist:\n{}", path_str_clone)));
                     error_label.set_halign(Align::Center);
                     error_label.set_valign(Align::Center);
                     error_label.set_hexpand(true);
                     error_label.set_vexpand(true);
-                    image_container_clone.append(&error_label);
+                    Self::set_scrolled_content(&content_scrolled_clone, &error_label);
                     glib::ControlFlow::Break
                 }
             });
@@ -360,7 +320,7 @@ impl PreviewArea {
                     let pixbuf_result = Pixbuf::from_file_at_scale(&cache_path, 800, 600, true);
 
                     glib::idle_add_local({
-                        let image_container_clone = self.image_container.clone();
+                        let content_scrolled_clone = self.content_scrolled.clone();
                         let current_loading_path_clone = self.current_loading_path.clone();
                         let path_str_clone = path_str.clone();
                         let current_task_id_clone = self.current_task_id.clone();
@@ -370,26 +330,22 @@ impl PreviewArea {
                                 return glib::ControlFlow::Break;
                             }
 
-                            while let Some(child) = image_container_clone.first_child() {
-                                image_container_clone.remove(&child);
-                            }
+                            content_scrolled_clone.set_child(None::<&gtk4::Widget>);
 
                             if let Ok(ref pixbuf) = pixbuf_result {
                                 let picture = Picture::for_pixbuf(pixbuf);
-
                                 picture.set_halign(Align::Center);
                                 picture.set_valign(Align::Center);
                                 picture.set_hexpand(true);
                                 picture.set_vexpand(true);
-
-                                image_container_clone.append(&picture);
+                                Self::set_scrolled_content(&content_scrolled_clone, &picture);
                             } else {
                                 let error_label = Label::new(Some("Failed to load image"));
                                 error_label.set_halign(Align::Center);
                                 error_label.set_valign(Align::Center);
                                 error_label.set_hexpand(true);
                                 error_label.set_vexpand(true);
-                                image_container_clone.append(&error_label);
+                                Self::set_scrolled_content(&content_scrolled_clone, &error_label);
                             }
 
                             if let Ok(mut current_path) = current_loading_path_clone.lock() {
@@ -406,22 +362,20 @@ impl PreviewArea {
             }
         }
 
-        let image_container_clone_for_async = self.image_container.clone();
+        let content_scrolled_clone_for_async = self.content_scrolled.clone();
         let current_loading_path_clone = self.current_loading_path.clone();
         let current_task_id_clone = self.current_task_id.clone();
         let cache_path_clone = cache_path.clone();
         let expanded_path_clone = expanded_path.clone();
 
-        while let Some(child) = self.image_container.first_child() {
-            self.image_container.remove(&child);
-        }
+        self.clear_content();
 
         let loading_label = Label::new(Some("Loading..."));
         loading_label.set_halign(Align::Center);
         loading_label.set_valign(Align::Center);
         loading_label.set_hexpand(true);
         loading_label.set_vexpand(true);
-        self.image_container.append(&loading_label);
+        Self::set_scrolled_content(&self.content_scrolled, &loading_label);
 
         glib::spawn_future_local(async move {
             if current_task_id_clone.load(Ordering::SeqCst) != task_id {
@@ -461,26 +415,22 @@ impl PreviewArea {
                     return glib::ControlFlow::Break;
                 }
 
-                while let Some(child) = image_container_clone_for_async.first_child() {
-                    image_container_clone_for_async.remove(&child);
-                }
+                content_scrolled_clone_for_async.set_child(None::<&gtk4::Widget>);
 
                 if let Ok(ref pixbuf) = pixbuf_result {
                     let picture = Picture::for_pixbuf(pixbuf);
-
                     picture.set_halign(Align::Center);
                     picture.set_valign(Align::Center);
                     picture.set_hexpand(true);
                     picture.set_vexpand(true);
-
-                    image_container_clone_for_async.append(&picture);
+                    Self::set_scrolled_content(&content_scrolled_clone_for_async, &picture);
                 } else {
                     let error_label = Label::new(Some("Failed to load image"));
                     error_label.set_halign(Align::Center);
                     error_label.set_valign(Align::Center);
                     error_label.set_hexpand(true);
                     error_label.set_vexpand(true);
-                    image_container_clone_for_async.append(&error_label);
+                    Self::set_scrolled_content(&content_scrolled_clone_for_async, &error_label);
                 }
 
                 if let Ok(mut current_path) = current_loading_path_clone.lock() {
@@ -523,9 +473,7 @@ impl PreviewArea {
         let adjustment = self.details_scrolled.vadjustment();
         adjustment.set_value(0.0);
 
-        while let Some(child) = self.image_container.first_child() {
-            self.image_container.remove(&child);
-        }
+        self.clear_content();
 
         let text_view = TextView::new();
         text_view.set_editable(false);
@@ -546,10 +494,9 @@ impl PreviewArea {
         scrolled_window.set_child(Some(&text_view));
         scrolled_window.set_hexpand(true);
         scrolled_window.set_vexpand(true);
-
         scrolled_window.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
         scrolled_window.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
 
-        self.image_container.append(&scrolled_window);
+        Self::set_scrolled_content(&self.content_scrolled, &scrolled_window);
     }
 }

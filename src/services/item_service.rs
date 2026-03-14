@@ -1,5 +1,4 @@
 use crate::domain::item::Item;
-use gtk4::prelude::ObjectExt;
 use gtk4::prelude::WidgetExt;
 use gtk4::ListBox;
 
@@ -19,11 +18,9 @@ impl ItemService {
     /// Add processed items to the UI listbox
     pub fn add_items_to_listbox(listbox: &ListBox, items: &[Item]) {
         for item in items {
-            let row = crate::ui::list::create_list_item(&item.title, &item.value);
+            let row = crate::ui::list::create_listbox_row(&item.title);
             let item_obj = crate::app::item_object::ItemObject::new(item.clone());
-            unsafe {
-                row.set_data("item", item_obj);
-            }
+            item_obj.attach_to_row(&row);
             listbox.append(&row);
         }
     }

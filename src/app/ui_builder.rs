@@ -1,4 +1,3 @@
-use gtk4::prelude::ObjectExt;
 use gtk4::{
     prelude::*, Application, ApplicationWindow, Box as GtkBox, Label, ListBox, Orientation,
     Overlay, ScrolledWindow,
@@ -90,8 +89,9 @@ impl UiBuilder {
                     title: line.to_string(),
                     value: line.to_string(),
                     category: "stdin".to_string(),
-                    display: display_mode.clone(), // 使用确定的显示模式
+                    display: display_mode.clone(),
                     source: SourceMode::Config,
+                    preview_template: None,
                 };
 
                 add_item_to_ui(&listbox, item);
@@ -114,7 +114,10 @@ impl UiBuilder {
                 glib::timeout_add_local(
                     std::time::Duration::from_millis(crate::constants::PREVIEW_UPDATE_THROTTLE_MS),
                     move || {
-                        update_preview(&listbox_inner, &preview_area_rc_opt_inner);
+                        crate::app::preview_manager::PreviewManager::update_preview(
+                            &listbox_inner,
+                            &preview_area_rc_opt_inner,
+                        );
                         glib::ControlFlow::Break
                     },
                 );
@@ -127,7 +130,10 @@ impl UiBuilder {
                     let listbox_clone = listbox.clone();
                     let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
                     move || {
-                        update_preview(&listbox_clone, &preview_area_rc_opt_clone);
+                        crate::app::preview_manager::PreviewManager::update_preview(
+                            &listbox_clone,
+                            &preview_area_rc_opt_clone,
+                        );
                         glib::ControlFlow::Break
                     }
                 },
@@ -264,56 +270,6 @@ fn wrap_in_scroll(child: &impl gtk4::prelude::IsA<gtk4::Widget>) -> ScrolledWind
 fn add_item_to_ui(listbox: &ListBox, item: Item) {
     let row = list::create_list_item(&item.title, &item.value);
     let item_obj = crate::app::item_object::ItemObject::new(item);
-    unsafe {
-        row.set_data("item", item_obj);
-    }
+    item_obj.attach_to_row(&row);
     listbox.append(&row);
-}
-
-fn update_preview(
-    listbox: &ListBox,
-    preview_area_rc_opt: &Option<Rc<RefCell<preview::PreviewArea>>>,
-) {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::OnceLock;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    static LAST_UPDATE_TIME: OnceLock<AtomicU64> = OnceLock::new();
-    let last_update = LAST_UPDATE_TIME.get_or_init(|| AtomicU64::new(0));
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-
-    let prev_time = last_update.load(Ordering::Relaxed);
-    // Skip throttling for initial update (when prev_time is 0) or if enough time has passed
-    if prev_time != 0
-        && now.saturating_sub(prev_time) < crate::constants::PREVIEW_UPDATE_THROTTLE_MS
-    {
-        return;
-    }
-
-    // Attempt to update the timestamp atomically
-    if last_update
-        .compare_exchange(prev_time, now, Ordering::Relaxed, Ordering::Relaxed)
-        .is_err()
-    {
-        // Another thread updated the time, skip this update
-        return;
-    }
-
-    if let Some(preview_area_rc) = preview_area_rc_opt {
-        if let Some(selected_row) = listbox.selected_row() {
-            if let Some(item_obj_ptr) =
-                unsafe { selected_row.data::<crate::app::item_object::ItemObject>("item") }
-            {
-                let item_obj = unsafe { &*item_obj_ptr.as_ptr() };
-                if let Some(item) = item_obj.item() {
-                    let preview_area = &*preview_area_rc.borrow();
-                    preview_area.update_with_content(&item);
-                }
-            }
-        }
-    }
 }

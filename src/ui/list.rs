@@ -13,6 +13,22 @@ pub fn create_listbox() -> ListBox {
 }
 
 pub fn create_list_item(title: &str, value: &str) -> ListBoxRow {
+    let row = create_listbox_row(title);
+    let vbox = row
+        .child()
+        .expect("ListBoxRow should have a child")
+        .downcast::<GtkBox>()
+        .expect("Child should be a GtkBox");
+    let value_label = Label::new(Some(value));
+    value_label.set_xalign(0.0);
+    value_label.add_css_class("dim-label");
+    value_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+    value_label.set_single_line_mode(true);
+    vbox.append(&value_label);
+    row
+}
+
+pub fn create_listbox_row(title: &str) -> ListBoxRow {
     let row = ListBoxRow::new();
     row.add_css_class("bookmark-row");
     let vbox = GtkBox::new(Orientation::Vertical, 2);
@@ -20,13 +36,7 @@ pub fn create_list_item(title: &str, value: &str) -> ListBoxRow {
     title_label.set_xalign(0.0);
     title_label.set_use_markup(true);
     title_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-    let value_label = Label::new(Some(value));
-    value_label.set_xalign(0.0);
-    value_label.add_css_class("dim-label");
-    value_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-    value_label.set_single_line_mode(true);
     vbox.append(&title_label);
-    vbox.append(&value_label);
     row.set_child(Some(&vbox));
     row
 }

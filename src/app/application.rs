@@ -5,7 +5,7 @@ use std::process::Command;
 use std::rc::Rc;
 
 use crate::app::{event_handlers::EventHandler, search_logic::SearchLogic, ui_builder::UiBuilder};
-use crate::config::{Config, DisplayMode, SourceMode};
+use crate::config::{Category, Config, DisplayMode, SourceMode};
 use crate::domain::item::Item;
 use crate::ui::preview;
 use crate::window_state::WindowState;
@@ -153,160 +153,44 @@ impl PantryApp {
 
             let mut items = Vec::new();
 
-            // If a category is specified, load only items from that category, otherwise load only categories with the same display mode as the global default
-            if let Some(ref category) = category_filter {
-                if let Some(category_config) = config.categories.get(category) {
-                    let effective_display = if let Some(display_str) = &display_arg {
-                        match display_str.as_str() {
-                            "picture" => DisplayMode::Picture,
-                            "text" => DisplayMode::Text,
-                            _ => category_config
-                                .display
-                                .clone()
-                                .unwrap_or(config.display.clone()),
-                        }
+            // Determine which categories to load
+            let categories_to_load: Vec<(&String, &Category)> = config
+                .categories
+                .iter()
+                .filter(|(name, cat_cfg)| {
+                    if let Some(ref filter) = category_filter {
+                        *name == filter
                     } else {
-                        category_config
-                            .display
-                            .clone()
-                            .unwrap_or(config.display.clone())
-                    };
-                    let effective_source = category_config
-                        .source
-                        .clone()
-                        .unwrap_or(config.source.clone());
-
-                    match effective_source {
-                        SourceMode::Config => {
-                            // Static mode: use entries from config file
-                            for (key, value) in &category_config.entries {
-                                items.push(Item {
-                                    title: key.clone(),
-                                    value: value.clone(),
-                                    category: category.clone(),
-                                    display: effective_display.clone(),
-                                    source: effective_source.clone(),
-                                });
-                            }
-                        }
-                        SourceMode::Command => {
-                            // Command mode: execute command and use its output
-                            for (key, cmd) in &category_config.entries {
-                                if let Ok(output) = execute_command(cmd) {
-                                    let lines: Vec<&str> = output.lines().collect();
-                                    for (idx, line) in lines.iter().enumerate() {
-                                        if !line.trim().is_empty() {
-                                            let title = if lines.len() == 1 {
-                                                key.clone() // Single line output uses original key
-                                            } else {
-                                                format!("{} [{}]", key, idx + 1)
-                                                // Multi-line adds index
-                                            };
-
-                                            items.push(Item {
-                                                title,
-                                                value: line.trim().to_string(),
-                                                category: category.clone(),
-                                                display: effective_display.clone(),
-                                                source: effective_source.clone(),
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        SourceMode::Dynamic => {
-                            // Dynamic mode: execute list command to get entries, template for preview
-                            for (list_cmd, preview_template) in &category_config.entries {
-                                if let Ok(dynamic_items) =
-                                    crate::domain::item::ItemProcessor::process_dynamic_source(
-                                        list_cmd,
-                                        preview_template,
-                                    )
-                                {
-                                    items.extend(dynamic_items);
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Load items only from categories that match the global default display mode
-                for (category_name, category_config) in &config.categories {
-                    let effective_display = if let Some(display_str) = &display_arg {
-                        match display_str.as_str() {
-                            "picture" => DisplayMode::Picture,
-                            "text" => DisplayMode::Text,
-                            _ => category_config
+                        // If no category filter, load all categories (or match global display mode)
+                        display_arg.is_some()
+                            || cat_cfg
                                 .display
-                                .clone()
-                                .unwrap_or(config.display.clone()),
-                        }
-                    } else {
-                        category_config
-                            .display
-                            .clone()
-                            .unwrap_or(config.display.clone())
-                    };
-                    let effective_source = category_config
-                        .source
-                        .clone()
-                        .unwrap_or(config.source.clone());
-
-                    // 如果有命令行参数，加载所有 categories；否则只加载匹配全局模式的
-                    if display_arg.is_some() || effective_display == config.display {
-                        match effective_source {
-                            SourceMode::Config => {
-                                for (key, value) in &category_config.entries {
-                                    items.push(Item {
-                                        title: key.clone(),
-                                        value: value.clone(),
-                                        category: category_name.clone(),
-                                        display: effective_display.clone(),
-                                        source: effective_source.clone(),
-                                    });
-                                }
-                            }
-                            SourceMode::Command => {
-                                for (key, cmd) in &category_config.entries {
-                                    if let Ok(output) = execute_command(cmd) {
-                                        let lines: Vec<&str> = output.lines().collect();
-                                        for (idx, line) in lines.iter().enumerate() {
-                                            if !line.trim().is_empty() {
-                                                let title = if lines.len() == 1 {
-                                                    key.clone()
-                                                } else {
-                                                    format!("{} [{}]", key, idx + 1)
-                                                };
-
-                                                items.push(Item {
-                                                    title,
-                                                    value: line.trim().to_string(),
-                                                    category: category_name.clone(),
-                                                    display: effective_display.clone(),
-                                                    source: effective_source.clone(),
-                                                });
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            SourceMode::Dynamic => {
-                                // Dynamic mode: execute list command to get entries, template for preview
-                                for (list_cmd, preview_template) in &category_config.entries {
-                                    if let Ok(dynamic_items) =
-                                        crate::domain::item::ItemProcessor::process_dynamic_source(
-                                            list_cmd,
-                                            preview_template,
-                                        )
-                                    {
-                                        items.extend(dynamic_items);
-                                    }
-                                }
-                            }
-                        }
+                                .as_ref()
+                                .unwrap_or(&config.display)
+                                == &config.display
                     }
-                }
+                })
+                .collect();
+
+            // Load items from each category
+            for (category_name, category_config) in categories_to_load {
+                let effective_display = resolve_display_mode(
+                    &display_arg,
+                    category_config.display.as_ref(),
+                    &config.display,
+                );
+                let effective_source = category_config
+                    .source
+                    .clone()
+                    .unwrap_or(config.source.clone());
+
+                load_items_from_category(
+                    category_name,
+                    category_config,
+                    effective_display,
+                    effective_source,
+                    &mut items,
+                );
             }
 
             let processed_items = crate::services::ItemService::process_items_for_display(items);
@@ -321,10 +205,8 @@ impl PantryApp {
                         &processed_items,
                     );
 
-                    // After all items are added, select the first item and trigger preview
                     crate::services::ItemService::select_first_item(&listbox_strong);
 
-                    // Trigger initial preview update
                     glib::timeout_add_local(
                         std::time::Duration::from_millis(
                             crate::constants::INITIAL_PREVIEW_DELAY_MS,
@@ -345,6 +227,84 @@ impl PantryApp {
                 glib::ControlFlow::Break
             });
         });
+    }
+}
+
+/// Resolve display mode from command line arg, category config, and global config
+fn resolve_display_mode(
+    display_arg: &Option<String>,
+    category_display: Option<&DisplayMode>,
+    global_display: &DisplayMode,
+) -> DisplayMode {
+    if let Some(display_str) = display_arg {
+        match display_str.as_str() {
+            "picture" => DisplayMode::Picture,
+            "text" => DisplayMode::Text,
+            _ => category_display.cloned().unwrap_or_else(|| global_display.clone()),
+        }
+    } else {
+        category_display.cloned().unwrap_or_else(|| global_display.clone())
+    }
+}
+
+/// Load items from a single category
+fn load_items_from_category(
+    category_name: &str,
+    category_config: &Category,
+    effective_display: DisplayMode,
+    effective_source: SourceMode,
+    items: &mut Vec<Item>,
+) {
+    match effective_source {
+        SourceMode::Config => {
+            for (key, value) in &category_config.entries {
+                items.push(Item {
+                    title: key.clone(),
+                    value: value.clone(),
+                    category: category_name.to_string(),
+                    display: effective_display.clone(),
+                    source: effective_source.clone(),
+                    preview_template: None,
+                });
+            }
+        }
+        SourceMode::Command => {
+            for (key, cmd) in &category_config.entries {
+                if let Ok(output) = execute_command(cmd) {
+                    let lines: Vec<&str> = output.lines().collect();
+                    for (idx, line) in lines.iter().enumerate() {
+                        if !line.trim().is_empty() {
+                            let title = if lines.len() == 1 {
+                                key.clone()
+                            } else {
+                                format!("{} [{}]", key, idx + 1)
+                            };
+
+                            items.push(Item {
+                                title,
+                                value: line.trim().to_string(),
+                                category: category_name.to_string(),
+                                display: effective_display.clone(),
+                                source: effective_source.clone(),
+                                preview_template: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        SourceMode::Dynamic => {
+            for (list_cmd, preview_template) in &category_config.entries {
+                if let Ok(dynamic_items) =
+                    crate::domain::item::ItemProcessor::process_dynamic_source(
+                        list_cmd,
+                        preview_template,
+                    )
+                {
+                    items.extend(dynamic_items);
+                }
+            }
+        }
     }
 }
 

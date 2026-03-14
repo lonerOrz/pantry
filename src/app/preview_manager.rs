@@ -1,6 +1,6 @@
-use gtk4::prelude::ObjectExt;
 use gtk4::ListBox;
 use std::cell::RefCell;
+use std::process::Command;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -23,37 +23,31 @@ impl PreviewManager {
             .unwrap_or(0);
 
         let prev_time = last_update.load(Ordering::Relaxed);
-        // Skip throttling for initial update (when prev_time is 0) or if enough time has passed
         if prev_time != 0
             && now.saturating_sub(prev_time) < crate::constants::PREVIEW_UPDATE_THROTTLE_MS
         {
             return;
         }
 
-        // Attempt to update the timestamp atomically
         if last_update
             .compare_exchange(prev_time, now, Ordering::Relaxed, Ordering::Relaxed)
             .is_err()
         {
-            // Another thread updated the time, skip this update
             return;
         }
 
         if let Some(preview_area_rc) = preview_area_rc_opt {
             if let Some(selected_row) = listbox.selected_row() {
-                if let Some(item_obj_ptr) =
-                    unsafe { selected_row.data::<crate::app::item_object::ItemObject>("item") }
+                if let Some(item_obj) = crate::app::item_object::ItemObject::from_row(&selected_row)
                 {
-                    let item_obj = unsafe { &*item_obj_ptr.as_ptr() };
                     if let Some(item) = item_obj.item() {
-                        // Handle dynamic source differently
-                        if matches!(item.source, crate::config::SourceMode::Dynamic) {
-                            // For dynamic source, we need to execute the preview command
-                            // The item.value contains the ID to use in the command
-                            // The command template would have been stored somewhere
-                            // For now, we'll treat it as a regular item
+                        // Use preview_template if available (dynamic source)
+                        if let Some(ref template) = item.preview_template {
+                            let preview_content = execute_preview_command(template, &item.value);
+                            let mut display_item = item.clone();
+                            display_item.value = preview_content;
                             let preview_area = &*preview_area_rc.borrow();
-                            preview_area.update_with_content(&item);
+                            preview_area.update_with_content(&display_item);
                         } else {
                             let preview_area = &*preview_area_rc.borrow();
                             preview_area.update_with_content(&item);
@@ -62,5 +56,20 @@ impl PreviewManager {
                 }
             }
         }
+    }
+}
+
+/// Execute preview command with the item value substituted for {}
+fn execute_preview_command(template: &str, item_value: &str) -> String {
+    let command = template.replace("{}", item_value);
+    match Command::new("sh").arg("-c").arg(&command).output() {
+        Ok(output) if output.status.success() => {
+            String::from_utf8_lossy(&output.stdout).to_string()
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            format!("[Preview error: {}]", stderr.trim())
+        }
+        Err(e) => format!("[Preview error: {}]", e),
     }
 }
