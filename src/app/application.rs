@@ -1,6 +1,7 @@
 use clap::Parser;
 use gtk4::{prelude::*, Application, ListBox};
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::process::Command;
 use std::rc::Rc;
 
@@ -285,7 +286,7 @@ fn load_items_from_category(
 
 pub fn get_default_config_path() -> String {
     let config_dir = dirs::config_dir()
-        .unwrap_or_else(|| std::env::current_dir().unwrap())
+        .unwrap_or_else(|| PathBuf::from("."))
         .join("pantry");
 
     if let Err(e) = std::fs::create_dir_all(&config_dir) {

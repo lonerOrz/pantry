@@ -22,12 +22,12 @@ pub struct PreviewArea {
 impl PreviewArea {
     pub fn new() -> Self {
         let mut cache_dir = dirs::cache_dir()
-            .unwrap_or_else(|| std::env::current_dir().unwrap())
+            .unwrap_or_else(|| PathBuf::from("."))
             .join("pantry");
 
         if let Err(e) = fs::create_dir_all(&cache_dir) {
             eprintln!("Warning: Failed to create cache directory: {}", e);
-            cache_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            cache_dir = PathBuf::from(".");
         }
 
         let details_label = Label::new(Some("No image selected"));
