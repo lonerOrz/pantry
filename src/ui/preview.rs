@@ -19,6 +19,7 @@ pub struct PreviewArea {
     current_loading_path: Arc<Mutex<Option<String>>>,
     current_task_id: Arc<AtomicU64>,
     next_task_id: Arc<AtomicU64>,
+    is_loading: Arc<AtomicU64>,
     cache_dir: PathBuf,
 }
 
@@ -76,6 +77,7 @@ impl PreviewArea {
             current_loading_path: Arc::new(Mutex::new(None)),
             current_task_id: Arc::new(AtomicU64::new(0)),
             next_task_id: Arc::new(AtomicU64::new(1)),
+            is_loading: Arc::new(AtomicU64::new(0)),
             cache_dir,
         }
     }
@@ -212,84 +214,102 @@ impl PreviewArea {
         ))
     }
 
-    /// Check if cache should be used (exists and is newer than original)
-    fn should_use_cache(
-        &self,
-        cache_path: &std::path::Path,
-        original_path: &std::path::Path,
-    ) -> bool {
-        if !cache_path.exists() {
-            return false;
-        }
-
-        match (
-            original_path.metadata().and_then(|m| m.modified()),
-            cache_path.metadata().and_then(|m| m.modified()),
-        ) {
-            (Ok(original_modified), Ok(cache_metadata)) => cache_metadata >= original_modified,
-            _ => false,
-        }
-    }
-
-    /// Load image from cache and display it
-    /// Returns true if successful, false if cache is corrupted (caller should reload from original)
     fn load_image_from_cache(
         &self,
         cache_path: &std::path::Path,
+        expanded_path: &std::path::Path,
         task_id: u64,
         path_str: &str,
-    ) -> bool {
-        let pixbuf_result = Pixbuf::from_file_at_scale(
-            cache_path,
-            crate::constants::IMAGE_PREVIEW_WIDTH,
-            crate::constants::IMAGE_PREVIEW_HEIGHT,
-            true,
-        );
+    ) {
+        let cache_path_str = cache_path.to_string_lossy().to_string();
+        let path_str_owned = path_str.to_string();
+        let content_scrolled = self.content_scrolled.clone();
+        let current_loading_path = self.current_loading_path.clone();
+        let current_task_id = self.current_task_id.clone();
+        let is_loading_flag = self.is_loading.clone();
+        let _expanded_path_str = expanded_path.to_string_lossy().to_string();
+        let _cache_dir = self.cache_dir.clone();
 
-        // If cache is corrupted, delete it and return false (caller will reload from original)
-        if pixbuf_result.is_err() {
-            let _ = std::fs::remove_file(cache_path);
-            return false;
-        }
+        let loading_label = Label::new(Some("Loading..."));
+        loading_label.set_halign(Align::Center);
+        loading_label.set_valign(Align::Center);
+        loading_label.set_hexpand(true);
+        loading_label.set_vexpand(true);
+        Self::set_scrolled_content(&content_scrolled, &loading_label);
 
-        let content_scrolled_clone = self.content_scrolled.clone();
-        let current_loading_path_clone = self.current_loading_path.clone();
-        let path_str_clone = path_str.to_string();
-        let current_task_id_clone = self.current_task_id.clone();
+        let cache_path_str_for_remove = cache_path_str.clone();
+        let cache_path_for_load = cache_path_str.clone();
 
-        glib::idle_add_local(move || {
-            if current_task_id_clone.load(Ordering::SeqCst) != task_id {
-                return glib::ControlFlow::Break;
-            }
-
-            content_scrolled_clone.set_child(None::<&gtk4::Widget>);
-
-            if let Ok(ref pixbuf) = pixbuf_result {
-                let picture = Picture::for_pixbuf(pixbuf);
-                picture.set_halign(Align::Center);
-                picture.set_valign(Align::Center);
-                picture.set_hexpand(true);
-                picture.set_vexpand(true);
-                Self::set_scrolled_content(&content_scrolled_clone, &picture);
-            } else {
-                let error_label = Label::new(Some("Failed to load image"));
-                error_label.set_halign(Align::Center);
-                error_label.set_valign(Align::Center);
-                error_label.set_hexpand(true);
-                error_label.set_vexpand(true);
-                Self::set_scrolled_content(&content_scrolled_clone, &error_label);
-            }
-
-            if let Ok(mut current_path) = current_loading_path_clone.lock() {
-                if current_path.as_ref() == Some(&path_str_clone) {
-                    *current_path = None;
+        glib::spawn_future_local(clone!(
+            #[weak]
+            content_scrolled,
+            async move {
+                if current_task_id.load(Ordering::SeqCst) != task_id {
+                    return;
                 }
+
+                // Load in background thread, convert to bytes
+                let cache_valid = gio::spawn_blocking(move || {
+                    Pixbuf::from_file_at_scale(
+                        std::path::Path::new(&cache_path_str),
+                        crate::constants::IMAGE_PREVIEW_WIDTH,
+                        crate::constants::IMAGE_PREVIEW_HEIGHT,
+                        true,
+                    ).is_ok()
+                }).await.unwrap_or(false);
+
+                if current_task_id.load(Ordering::SeqCst) != task_id {
+                    return;
+                }
+
+                if !cache_valid {
+                    let _ = std::fs::remove_file(&cache_path_str_for_remove);
+                }
+
+                content_scrolled.set_child(None::<&gtk4::Widget>);
+
+                if cache_valid {
+                    match Pixbuf::from_file_at_scale(
+                        std::path::Path::new(&cache_path_for_load),
+                        crate::constants::IMAGE_PREVIEW_WIDTH,
+                        crate::constants::IMAGE_PREVIEW_HEIGHT,
+                        true,
+                    ) {
+                        Ok(pixbuf) => {
+                            let picture = Picture::for_pixbuf(&pixbuf);
+                            picture.set_halign(Align::Center);
+                            picture.set_valign(Align::Center);
+                            picture.set_hexpand(true);
+                            picture.set_vexpand(true);
+                            Self::set_scrolled_content(&content_scrolled, &picture);
+                        }
+                        Err(_) => {
+                            let error_label = Label::new(Some("Failed to load image"));
+                            error_label.set_halign(Align::Center);
+                            error_label.set_valign(Align::Center);
+                            error_label.set_hexpand(true);
+                            error_label.set_vexpand(true);
+                            Self::set_scrolled_content(&content_scrolled, &error_label);
+                        }
+                    }
+                } else {
+                    let error_label = Label::new(Some("Failed to load image"));
+                    error_label.set_halign(Align::Center);
+                    error_label.set_valign(Align::Center);
+                    error_label.set_hexpand(true);
+                    error_label.set_vexpand(true);
+                    Self::set_scrolled_content(&content_scrolled, &error_label);
+                }
+
+                if let Ok(mut current_path) = current_loading_path.lock() {
+                    if current_path.as_ref() == Some(&path_str_owned) {
+                        *current_path = None;
+                    }
+                }
+
+                is_loading_flag.store(0, Ordering::SeqCst);
             }
-
-            glib::ControlFlow::Break
-        });
-
-        true
+        ));
     }
 
     fn update_with_dynamic_content(&self, item: &Item) {
@@ -473,6 +493,11 @@ impl PreviewArea {
             }
         }
 
+        if self.is_loading.load(Ordering::SeqCst) == 1 {
+            return;
+        }
+        self.is_loading.store(1, Ordering::SeqCst);
+
         let task_id = self.next_task_id.fetch_add(1, Ordering::SeqCst);
 
         if let Ok(mut current_path) = self.current_loading_path.lock() {
@@ -482,6 +507,7 @@ impl PreviewArea {
         self.current_task_id.store(task_id, Ordering::SeqCst);
 
         if !expanded_path.exists() {
+            self.is_loading.store(0, Ordering::SeqCst);
             glib::idle_add_local({
                 let content_scrolled_clone = self.content_scrolled.clone();
                 let path_str_clone = path_str.clone();
@@ -507,17 +533,23 @@ impl PreviewArea {
             crate::utils::path_to_safe_filename(&expanded_path)
         ));
 
-        // Try to load from cache if it exists and is up-to-date
-        if self.should_use_cache(&cache_path, &expanded_path) {
-            // If cache load succeeds, return early
-            // If cache is corrupted, delete it and continue to load from original
-            if self.load_image_from_cache(&cache_path, task_id, &path_str) {
-                return;
-            }
+        if cache_path.exists() {
+            self.load_image_from_cache(&cache_path, &expanded_path, task_id, &path_str);
+            return;
         }
 
-        let cache_path_clone = cache_path.clone();
-        let expanded_path_clone = expanded_path.clone();
+        self.load_image_from_original(&expanded_path, &cache_path, task_id, &path_str);
+    }
+
+    fn load_image_from_original(
+        &self,
+        expanded_path: &std::path::Path,
+        cache_path: &std::path::Path,
+        task_id: u64,
+        _path_str: &str,
+    ) {
+        let expanded_path_clone = expanded_path;
+        let cache_path_clone = cache_path;
         let content_scrolled = self.content_scrolled.clone();
         let cache_dir = self.cache_dir.clone();
         let task_id_clone = task_id;
@@ -539,6 +571,7 @@ impl PreviewArea {
         let expanded_path_str_clone = expanded_path_str.clone();
         let cache_dir_str_clone = cache_dir_str.clone();
         let cache_path_str_clone = cache_path_str.clone();
+        let is_loading_flag = self.is_loading.clone();
 
         glib::spawn_future_local(clone!(
             #[weak]
@@ -552,33 +585,29 @@ impl PreviewArea {
                     let expanded_path = std::path::Path::new(&expanded_path_str_clone);
                     let cache_dir_path = std::path::Path::new(&cache_dir_str_clone);
 
-                    let result: Option<(Vec<u8>, u32, u32)>;
-
                     if Self::is_video_file(expanded_path) {
-                        result = Self::generate_video_thumbnail(expanded_path, cache_dir_path)
+                        Self::generate_video_thumbnail(expanded_path, cache_dir_path)
                             .and_then(|thumb_path| {
                                 Self::load_image_data(
                                     &thumb_path,
                                     crate::constants::IMAGE_PREVIEW_WIDTH,
                                     crate::constants::IMAGE_PREVIEW_HEIGHT,
                                 )
-                            });
+                            })
                     } else {
-                        result = Self::load_image_data(
+                        Self::load_image_data(
                             expanded_path,
                             crate::constants::IMAGE_PREVIEW_WIDTH,
                             crate::constants::IMAGE_PREVIEW_HEIGHT,
-                        );
+                        )
                     }
-
-                    result
-                }).await;
+                }).await.unwrap_or(None);
 
                 if current_task_id.load(Ordering::SeqCst) != task_id_clone {
                     return;
                 }
 
-                if let Ok(Some((raw_data, width, height))) = load_result {
+                if let Some((raw_data, width, height)) = load_result {
                     if let Some(pixbuf) = Self::create_pixbuf_from_data(raw_data, width, height) {
                         let cache_path = std::path::Path::new(&cache_path_str_clone);
                         let _ = pixbuf.savev(cache_path, "png", &[]);
@@ -617,6 +646,8 @@ impl PreviewArea {
                     error_label.set_vexpand(true);
                     content_scrolled.set_child(Some(&error_label));
                 }
+
+                is_loading_flag.store(0, Ordering::SeqCst);
             }
         ));
     }

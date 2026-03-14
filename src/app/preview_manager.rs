@@ -1,4 +1,6 @@
+use glib::clone;
 use gtk4::ListBox;
+use gtk4::{gio, glib};
 use std::cell::RefCell;
 use std::process::Command;
 use std::rc::Rc;
@@ -41,13 +43,28 @@ impl PreviewManager {
                 if let Some(item_obj) = crate::app::item_object::ItemObject::from_row(&selected_row)
                 {
                     if let Some(item) = item_obj.item() {
-                        // Use preview_template if available (dynamic source)
                         if let Some(ref template) = item.preview_template {
-                            let preview_content = execute_preview_command(template, &item.value);
-                            let mut display_item = item.clone();
-                            display_item.value = preview_content;
-                            let preview_area = &*preview_area_rc.borrow();
-                            preview_area.update_with_content(&display_item);
+                            let preview_area = preview_area_rc.clone();
+                            let item_value = item.value.clone();
+                            let template_owned = template.clone();
+                            let item_owned = item.clone();
+
+                            glib::spawn_future_local(clone!(
+                                #[weak]
+                                preview_area,
+                                async move {
+                                    let result = gio::spawn_blocking(move || {
+                                        execute_preview_command_sync(&template_owned, &item_value)
+                                    }).await;
+
+                                    let preview_content = result.unwrap_or_else(|_| "[Preview error]".to_string());
+
+                                    let mut display_item = item_owned;
+                                    display_item.value = preview_content;
+                                    let preview_area = &*preview_area.borrow();
+                                    preview_area.update_with_content(&display_item);
+                                }
+                            ));
                         } else {
                             let preview_area = &*preview_area_rc.borrow();
                             preview_area.update_with_content(&item);
@@ -59,8 +76,7 @@ impl PreviewManager {
     }
 }
 
-/// Execute preview command with the item value substituted for {}
-fn execute_preview_command(template: &str, item_value: &str) -> String {
+fn execute_preview_command_sync(template: &str, item_value: &str) -> String {
     let command = template.replace("{}", item_value);
     match Command::new("sh").arg("-c").arg(&command).output() {
         Ok(output) if output.status.success() => {
