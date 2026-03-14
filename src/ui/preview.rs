@@ -148,7 +148,13 @@ impl PreviewArea {
     }
 
     /// Load image from cache and display it
-    fn load_image_from_cache(&self, cache_path: &std::path::Path, task_id: u64, path_str: &str) {
+    /// Returns true if successful, false if cache is corrupted (caller should reload from original)
+    fn load_image_from_cache(
+        &self,
+        cache_path: &std::path::Path,
+        task_id: u64,
+        path_str: &str,
+    ) -> bool {
         let pixbuf_result = Pixbuf::from_file_at_scale(
             cache_path,
             crate::constants::IMAGE_PREVIEW_WIDTH,
@@ -156,9 +162,10 @@ impl PreviewArea {
             true,
         );
 
-        // If cache is corrupted, delete it for next time
+        // If cache is corrupted, delete it and return false (caller will reload from original)
         if pixbuf_result.is_err() {
             let _ = std::fs::remove_file(cache_path);
+            return false;
         }
 
         let content_scrolled_clone = self.content_scrolled.clone();
@@ -197,6 +204,8 @@ impl PreviewArea {
 
             glib::ControlFlow::Break
         });
+
+        true
     }
 
     fn update_with_dynamic_content(&self, item: &Item) {
@@ -416,8 +425,11 @@ impl PreviewArea {
 
         // Try to load from cache if it exists and is up-to-date
         if self.should_use_cache(&cache_path, &expanded_path) {
-            self.load_image_from_cache(&cache_path, task_id, &path_str);
-            return;
+            // If cache load succeeds, return early
+            // If cache is corrupted, delete it and continue to load from original
+            if self.load_image_from_cache(&cache_path, task_id, &path_str) {
+                return;
+            }
         }
 
         let cache_path_clone = cache_path.clone();
