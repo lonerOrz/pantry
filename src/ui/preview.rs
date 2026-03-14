@@ -1,9 +1,12 @@
 use crate::domain::item::Item;
 use gdk_pixbuf::Pixbuf;
+use glib::clone;
 use gtk4::prelude::*;
-use gtk4::{glib, Align, Grid, Label, Picture, ScrolledWindow, TextView};
+use gtk4::{gio, Align, Grid, Label, Picture, ScrolledWindow, TextView};
+use image::ImageReader;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -126,6 +129,87 @@ impl PreviewArea {
         scrolled_window.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
         scrolled_window.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
         scrolled_window
+    }
+
+    fn is_video_file(path: &std::path::Path) -> bool {
+        match path.extension().and_then(|s| s.to_str()) {
+            Some(ext) => matches!(
+                ext.to_lowercase().as_str(),
+                "mp4" | "webm" | "mkv" | "avi" | "mov" | "wmv" | "flv" | "m4v"
+            ),
+            None => false,
+        }
+    }
+
+    fn generate_video_thumbnail(
+        video_path: &std::path::Path,
+        output_dir: &std::path::Path,
+    ) -> Option<PathBuf> {
+        let video_stem = video_path.file_stem()?.to_string_lossy();
+        let thumbnail_path = output_dir.join(format!("{}_thumb.png", video_stem));
+
+        if thumbnail_path.exists() {
+            return Some(thumbnail_path);
+        }
+
+        let result = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-ss",
+                "1",
+                "-i",
+                &video_path.to_string_lossy(),
+                "-vframes",
+                "1",
+                "-vf",
+                "scale=800:-1",
+                "-q:v",
+                "2",
+                &thumbnail_path.to_string_lossy(),
+            ])
+            .output();
+
+        match result {
+            Ok(output) if output.status.success() => Some(thumbnail_path),
+            _ => None,
+        }
+    }
+
+    fn load_image_data(
+        path: &std::path::Path,
+        max_width: i32,
+        max_height: i32,
+    ) -> Option<(Vec<u8>, u32, u32)> {
+        let img = ImageReader::open(path).ok()?.decode().ok()?;
+
+        let (orig_width, orig_height) = (img.width() as f32, img.height() as f32);
+        let (target_width, target_height) = (max_width as f32, max_height as f32);
+
+        let ratio = (target_width / orig_width)
+            .min(target_height / orig_height)
+            .min(1.0);
+        let new_width = (orig_width * ratio) as u32;
+        let new_height = (orig_height * ratio) as u32;
+
+        let resized =
+            img.resize_exact(new_width, new_height, image::imageops::FilterType::Lanczos3);
+        let rgba = resized.to_rgba8();
+        let (width, height) = rgba.dimensions();
+        let raw_data = rgba.into_raw();
+
+        Some((raw_data, width, height))
+    }
+
+    fn create_pixbuf_from_data(raw_data: Vec<u8>, width: u32, height: u32) -> Option<Pixbuf> {
+        Some(Pixbuf::from_bytes(
+            &glib::Bytes::from(&raw_data),
+            gdk_pixbuf::Colorspace::Rgb,
+            true,
+            8,
+            width as i32,
+            height as i32,
+            (width * 4) as i32,
+        ))
     }
 
     /// Check if cache should be used (exists and is newer than original)
@@ -435,6 +519,9 @@ impl PreviewArea {
         let cache_path_clone = cache_path.clone();
         let expanded_path_clone = expanded_path.clone();
         let content_scrolled = self.content_scrolled.clone();
+        let cache_dir = self.cache_dir.clone();
+        let task_id_clone = task_id;
+        let current_task_id = self.current_task_id.clone();
 
         self.clear_content();
 
@@ -445,58 +532,93 @@ impl PreviewArea {
         loading_label.set_vexpand(true);
         Self::set_scrolled_content(&self.content_scrolled, &loading_label);
 
-        // Load image using glib async context
-        // Note: Pixbuf::from_file_at_scale is synchronous but typically fast for cached images
-        let result = Pixbuf::from_file_at_scale(
-            &expanded_path_clone,
-            crate::constants::IMAGE_PREVIEW_WIDTH,
-            crate::constants::IMAGE_PREVIEW_HEIGHT,
-            true,
-        );
+        let expanded_path_str = expanded_path_clone.to_string_lossy().to_string();
+        let cache_dir_str = cache_dir.to_string_lossy().to_string();
+        let cache_path_str = cache_path_clone.to_string_lossy().to_string();
 
-        // Save to cache if successful
-        if let Ok(ref pixbuf) = result {
-            let format = match expanded_path_clone.extension().and_then(|s| s.to_str()) {
-                Some(ext)
-                    if ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("jpeg") =>
-                {
-                    "jpeg"
+        let expanded_path_str_clone = expanded_path_str.clone();
+        let cache_dir_str_clone = cache_dir_str.clone();
+        let cache_path_str_clone = cache_path_str.clone();
+
+        glib::spawn_future_local(clone!(
+            #[weak]
+            content_scrolled,
+            async move {
+                if current_task_id.load(Ordering::SeqCst) != task_id_clone {
+                    return;
                 }
-                Some(ext) if ext.eq_ignore_ascii_case("png") => "png",
-                Some(ext) if ext.eq_ignore_ascii_case("bmp") => "bmp",
-                Some(ext)
-                    if ext.eq_ignore_ascii_case("tiff") || ext.eq_ignore_ascii_case("tif") =>
-                {
-                    "tiff"
+
+                let load_result = gio::spawn_blocking(move || {
+                    let expanded_path = std::path::Path::new(&expanded_path_str_clone);
+                    let cache_dir_path = std::path::Path::new(&cache_dir_str_clone);
+
+                    let result: Option<(Vec<u8>, u32, u32)>;
+
+                    if Self::is_video_file(expanded_path) {
+                        result = Self::generate_video_thumbnail(expanded_path, cache_dir_path)
+                            .and_then(|thumb_path| {
+                                Self::load_image_data(
+                                    &thumb_path,
+                                    crate::constants::IMAGE_PREVIEW_WIDTH,
+                                    crate::constants::IMAGE_PREVIEW_HEIGHT,
+                                )
+                            });
+                    } else {
+                        result = Self::load_image_data(
+                            expanded_path,
+                            crate::constants::IMAGE_PREVIEW_WIDTH,
+                            crate::constants::IMAGE_PREVIEW_HEIGHT,
+                        );
+                    }
+
+                    result
+                }).await;
+
+                if current_task_id.load(Ordering::SeqCst) != task_id_clone {
+                    return;
                 }
-                Some(ext) if ext.eq_ignore_ascii_case("webp") => "webp",
-                _ => "png",
-            };
-            let _ = pixbuf.savev(&cache_path_clone, format, &[]);
-        }
 
-        // Update UI on main thread
-        glib::idle_add_local(move || {
-            content_scrolled.set_child(None::<&gtk4::Widget>);
+                if let Ok(Some((raw_data, width, height))) = load_result {
+                    if let Some(pixbuf) = Self::create_pixbuf_from_data(raw_data, width, height) {
+                        let cache_path = std::path::Path::new(&cache_path_str_clone);
+                        let _ = pixbuf.savev(cache_path, "png", &[]);
+                        let expanded_path = std::path::Path::new(&expanded_path_str);
+                        if let Ok(src_meta) = expanded_path.metadata() {
+                            if let Ok(src_mtime) = src_meta.modified() {
+                                let _ = filetime::set_file_mtime(
+                                    cache_path,
+                                    filetime::FileTime::from_system_time(src_mtime),
+                                );
+                            }
+                        }
 
-            if let Ok(ref pixbuf) = result {
-                let picture = Picture::for_pixbuf(pixbuf);
-                picture.set_halign(Align::Center);
-                picture.set_valign(Align::Center);
-                picture.set_hexpand(true);
-                picture.set_vexpand(true);
-                content_scrolled.set_child(Some(&picture));
-            } else {
-                let error_label = Label::new(Some("Failed to load image"));
-                error_label.set_halign(Align::Center);
-                error_label.set_valign(Align::Center);
-                error_label.set_hexpand(true);
-                error_label.set_vexpand(true);
-                content_scrolled.set_child(Some(&error_label));
+                        content_scrolled.set_child(None::<&gtk4::Widget>);
+                        let picture = Picture::for_pixbuf(&pixbuf);
+                        picture.set_halign(Align::Center);
+                        picture.set_valign(Align::Center);
+                        picture.set_hexpand(true);
+                        picture.set_vexpand(true);
+                        content_scrolled.set_child(Some(&picture));
+                    } else {
+                        content_scrolled.set_child(None::<&gtk4::Widget>);
+                        let error_label = Label::new(Some("Failed to load image"));
+                        error_label.set_halign(Align::Center);
+                        error_label.set_valign(Align::Center);
+                        error_label.set_hexpand(true);
+                        error_label.set_vexpand(true);
+                        content_scrolled.set_child(Some(&error_label));
+                    }
+                } else {
+                    content_scrolled.set_child(None::<&gtk4::Widget>);
+                    let error_label = Label::new(Some("Failed to load image"));
+                    error_label.set_halign(Align::Center);
+                    error_label.set_valign(Align::Center);
+                    error_label.set_hexpand(true);
+                    error_label.set_vexpand(true);
+                    content_scrolled.set_child(Some(&error_label));
+                }
             }
-
-            glib::ControlFlow::Break
-        });
+        ));
     }
 
     fn update_with_text_content(&self, item: &Item) {
