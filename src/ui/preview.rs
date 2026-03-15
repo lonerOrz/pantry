@@ -2,13 +2,19 @@ use crate::domain::item::Item;
 use gdk_pixbuf::Pixbuf;
 use glib::clone;
 use gtk4::prelude::*;
-use gtk4::{gio, Align, Grid, Label, Picture, ScrolledWindow, TextView};
+use gtk4::{Align, Grid, Label, Picture, ScrolledWindow, TextView, gio};
 use image::ImageReader;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+
+// Timeout for cache loading (in milliseconds)
+const CACHE_TIMEOUT_MS: u64 = 300; // 300ms timeout for cache loading
+
+// Timeout for direct image loading (in milliseconds)
+const DIRECT_LOAD_TIMEOUT_MS: u64 = 10000; // 10s timeout for direct loading (increased for large images and video thumbnails)
 
 #[derive(Clone)]
 pub struct PreviewArea {
@@ -19,7 +25,6 @@ pub struct PreviewArea {
     current_loading_path: Arc<Mutex<Option<String>>>,
     current_task_id: Arc<AtomicU64>,
     next_task_id: Arc<AtomicU64>,
-    is_loading: Arc<AtomicU64>,
     cache_dir: PathBuf,
 }
 
@@ -77,13 +82,11 @@ impl PreviewArea {
             current_loading_path: Arc::new(Mutex::new(None)),
             current_task_id: Arc::new(AtomicU64::new(0)),
             next_task_id: Arc::new(AtomicU64::new(1)),
-            is_loading: Arc::new(AtomicU64::new(0)),
             cache_dir,
         }
     }
 
     pub fn update_with_content(&self, item: &Item) {
-        // Show details area by default, text mode will hide it
         self.details_scrolled.set_visible(true);
 
         match item.source {
@@ -103,16 +106,15 @@ impl PreviewArea {
         scrolled.set_child(Some(widget));
     }
 
-    /// Create a non-editable text view with standard styling
     fn create_text_view(text: &str) -> TextView {
         let text_view = TextView::new();
         text_view.set_editable(false);
         text_view.set_cursor_visible(false);
         text_view.set_wrap_mode(gtk4::WrapMode::Word);
-        text_view.set_left_margin(crate::constants::TEXT_MARGIN);
-        text_view.set_right_margin(crate::constants::TEXT_MARGIN);
-        text_view.set_top_margin(crate::constants::TEXT_MARGIN);
-        text_view.set_bottom_margin(crate::constants::TEXT_MARGIN);
+        text_view.set_left_margin(10);
+        text_view.set_right_margin(10);
+        text_view.set_top_margin(10);
+        text_view.set_bottom_margin(10);
 
         let buffer = text_view.buffer();
         buffer.set_text(text);
@@ -122,7 +124,6 @@ impl PreviewArea {
         text_view
     }
 
-    /// Create a scrolled window with standard styling for text content
     fn create_text_scrolled(text_view: &TextView) -> ScrolledWindow {
         let scrolled_window = gtk4::ScrolledWindow::new();
         scrolled_window.set_child(Some(text_view));
@@ -148,87 +149,233 @@ impl PreviewArea {
         output_dir: &std::path::Path,
     ) -> Option<PathBuf> {
         let video_stem = video_path.file_stem()?.to_string_lossy();
-        let thumbnail_path = output_dir.join(format!("{}_thumb.png", video_stem));
+        // Use .raw extension for consistency
+        let thumbnail_path = output_dir.join(format!("{}_thumb.raw", video_stem));
 
         if thumbnail_path.exists() {
             return Some(thumbnail_path);
         }
 
+        // Generate PNG thumbnail first using ffmpeg (optimized for speed)
+        let temp_png = output_dir.join(format!("{}_thumb_temp.png", video_stem));
+
         let result = Command::new("ffmpeg")
             .args([
                 "-y",
                 "-ss",
-                "1",
+                "1", // Seek to 1 second
                 "-i",
                 &video_path.to_string_lossy(),
                 "-vframes",
                 "1",
                 "-vf",
                 "scale=800:-1",
+                "-preset",
+                "ultrafast", // Fastest encoding
                 "-q:v",
-                "2",
-                &thumbnail_path.to_string_lossy(),
+                "5", // Lower quality for speed
+                &temp_png.to_string_lossy(),
             ])
             .output();
 
         match result {
-            Ok(output) if output.status.success() => Some(thumbnail_path),
-            _ => None,
+            Ok(output) if output.status.success() => {
+                // Convert PNG to RAW format for faster loading
+                if let Some((raw_data, width, height)) =
+                    Self::load_image_data_raw(&temp_png, 800, 600)
+                {
+                    let _ = Self::save_raw_cache(&thumbnail_path, &raw_data, width, height);
+                    let _ = std::fs::remove_file(temp_png); // Clean up temp PNG
+                }
+                Some(thumbnail_path)
+            }
+            Err(e) => {
+                eprintln!("[LOAD] ffmpeg error: {}", e);
+                let _ = std::fs::remove_file(temp_png);
+                None
+            }
+            _ => {
+                let _ = std::fs::remove_file(temp_png);
+                None
+            }
         }
     }
 
-    fn load_image_data(
+    /// Load only the first frame of a GIF (faster than loading all frames)
+    fn load_gif_first_frame(
         path: &std::path::Path,
         max_width: i32,
         max_height: i32,
     ) -> Option<(Vec<u8>, u32, u32)> {
-        let img = ImageReader::open(path).ok()?.decode().ok()?;
+        // Use ImageReader to load GIF (automatically gets first frame)
+        let img = ImageReader::open(path)
+            .ok()?
+            .with_guessed_format()
+            .ok()?
+            .decode()
+            .ok()?;
 
-        let (orig_width, orig_height) = (img.width() as f32, img.height() as f32);
-        let (target_width, target_height) = (max_width as f32, max_height as f32);
+        let (width, height) = (img.width(), img.height());
 
-        let ratio = (target_width / orig_width)
-            .min(target_height / orig_height)
-            .min(1.0);
-        let new_width = (orig_width * ratio) as u32;
-        let new_height = (orig_height * ratio) as u32;
+        // Resize if needed
+        let (target_width, target_height) = {
+            let ratio = (max_width as f32 / width as f32)
+                .min(max_height as f32 / height as f32)
+                .min(1.0);
+            (
+                (width as f32 * ratio) as u32,
+                (height as f32 * ratio) as u32,
+            )
+        };
 
-        let resized =
-            img.resize_exact(new_width, new_height, image::imageops::FilterType::Lanczos3);
+        let resized = if target_width < width || target_height < height {
+            img.resize_exact(
+                target_width,
+                target_height,
+                image::imageops::FilterType::Lanczos3,
+            )
+        } else {
+            img
+        };
+
         let rgba = resized.to_rgba8();
-        let (width, height) = rgba.dimensions();
-        let raw_data = rgba.into_raw();
-
-        Some((raw_data, width, height))
+        let (width, height) = (rgba.width(), rgba.height());
+        Some((rgba.into_raw(), width, height))
     }
 
-    fn create_pixbuf_from_data(raw_data: Vec<u8>, width: u32, height: u32) -> Option<Pixbuf> {
-        Some(Pixbuf::from_bytes(
-            &glib::Bytes::from(&raw_data),
-            gdk_pixbuf::Colorspace::Rgb,
-            true,
-            8,
-            width as i32,
-            height as i32,
-            (width * 4) as i32,
-        ))
+    fn load_image_data_raw(
+        path: &std::path::Path,
+        max_width: i32,
+        max_height: i32,
+    ) -> Option<(Vec<u8>, u32, u32)> {
+        // Check if this is a GIF - use image crate for first frame only
+        let is_gif = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("gif"))
+            .unwrap_or(false);
+
+        if is_gif {
+            // For GIF, use image crate to load only first frame (faster)
+            return Self::load_gif_first_frame(path, max_width, max_height);
+        }
+
+        // Use gdk-pixbuf for fast image loading and scaling (other formats)
+        let pixbuf = Pixbuf::from_file_at_scale(
+            path, max_width, max_height, true, // preserve aspect ratio
+        )
+        .ok()?;
+
+        let width = pixbuf.width() as u32;
+        let height = pixbuf.height() as u32;
+        let has_alpha = pixbuf.has_alpha();
+        let rowstride = pixbuf.rowstride() as usize;
+
+        // Get pixel data
+        let pixel_bytes = pixbuf.read_pixel_bytes();
+        let pixels: &[u8] = pixel_bytes.as_ref();
+
+        // Convert to RGBA format (handle rowstride padding)
+        let mut rgba_data = Vec::with_capacity((width * height * 4) as usize);
+        let n_channels = pixbuf.n_channels() as usize;
+
+        for y in 0..height as usize {
+            let row_start = y * rowstride;
+            for x in 0..width as usize {
+                let pixel_start = row_start + x * n_channels;
+                // Copy RGB channels
+                rgba_data.extend_from_slice(&pixels[pixel_start..pixel_start + 3]);
+                // Add alpha channel
+                if has_alpha && n_channels >= 4 {
+                    rgba_data.push(pixels[pixel_start + 3]);
+                } else {
+                    rgba_data.push(255); // Full alpha
+                }
+            }
+        }
+
+        Some((rgba_data, width, height))
     }
 
-    fn load_image_from_cache(
+    /// Save raw RGBA data to cache file
+    /// Format: [width (4 bytes)][height (4 bytes)][RGBA data]
+    fn save_raw_cache(
+        path: &std::path::Path,
+        raw_data: &[u8],
+        width: u32,
+        height: u32,
+    ) -> std::io::Result<()> {
+        use std::io::{BufWriter, Write};
+        let file = std::fs::File::create(path)?;
+        let mut writer = BufWriter::new(file);
+        writer.write_all(&width.to_ne_bytes())?;
+        writer.write_all(&height.to_ne_bytes())?;
+        writer.write_all(raw_data)?;
+        writer.flush()?;
+        Ok(())
+    }
+
+    /// Load raw RGBA data from cache file
+    /// Returns None if file is corrupted
+    fn load_raw_cache(path: &std::path::Path) -> Option<(Vec<u8>, u32, u32)> {
+        use std::io::Read;
+
+        eprintln!("[CACHE] Loading RAW cache: {:?}", path);
+        let start = std::time::Instant::now();
+
+        let mut file = std::fs::File::open(path).ok()?;
+        let mut width_buf = [0u8; 4];
+        let mut height_buf = [0u8; 4];
+        file.read_exact(&mut width_buf).ok()?;
+        file.read_exact(&mut height_buf).ok()?;
+        let width = u32::from_ne_bytes(width_buf);
+        let height = u32::from_ne_bytes(height_buf);
+
+        eprintln!("[CACHE] Dimensions: {}x{}", width, height);
+
+        let expected_size = (width * height * 4) as usize;
+        let mut raw_data = Vec::with_capacity(expected_size);
+        file.read_to_end(&mut raw_data).ok()?;
+
+        let elapsed = start.elapsed();
+        eprintln!(
+            "[CACHE] Loaded {} bytes in {:?} (expected: {})",
+            raw_data.len(),
+            elapsed,
+            expected_size
+        );
+
+        if raw_data.len() == expected_size {
+            Some((raw_data, width, height))
+        } else {
+            eprintln!("[CACHE] Size mismatch! Corrupted file");
+            None // Corrupted
+        }
+    }
+
+    fn should_use_cache(
         &self,
         cache_path: &std::path::Path,
-        expanded_path: &std::path::Path,
-        task_id: u64,
-        path_str: &str,
-    ) {
+        original_path: &std::path::Path,
+    ) -> bool {
+        if !cache_path.exists() {
+            return false;
+        }
+
+        match (
+            original_path.metadata().and_then(|m| m.modified()),
+            cache_path.metadata().and_then(|m| m.modified()),
+        ) {
+            (Ok(original_modified), Ok(cache_metadata)) => cache_metadata >= original_modified,
+            _ => false,
+        }
+    }
+
+    fn load_image_from_cache(&self, cache_path: &std::path::Path, task_id: u64) {
         let cache_path_str = cache_path.to_string_lossy().to_string();
-        let path_str_owned = path_str.to_string();
         let content_scrolled = self.content_scrolled.clone();
-        let current_loading_path = self.current_loading_path.clone();
         let current_task_id = self.current_task_id.clone();
-        let is_loading_flag = self.is_loading.clone();
-        let _expanded_path_str = expanded_path.to_string_lossy().to_string();
-        let _cache_dir = self.cache_dir.clone();
+        let cache_path_for_delete = cache_path.to_path_buf();
 
         let loading_label = Label::new(Some("Loading..."));
         loading_label.set_halign(Align::Center);
@@ -236,9 +383,6 @@ impl PreviewArea {
         loading_label.set_hexpand(true);
         loading_label.set_vexpand(true);
         Self::set_scrolled_content(&content_scrolled, &loading_label);
-
-        let cache_path_str_for_remove = cache_path_str.clone();
-        let cache_path_for_load = cache_path_str.clone();
 
         glib::spawn_future_local(clone!(
             #[weak]
@@ -248,51 +392,64 @@ impl PreviewArea {
                     return;
                 }
 
-                // Load in background thread, convert to bytes
-                let cache_valid = gio::spawn_blocking(move || {
-                    Pixbuf::from_file_at_scale(
-                        std::path::Path::new(&cache_path_str),
-                        crate::constants::IMAGE_PREVIEW_WIDTH,
-                        crate::constants::IMAGE_PREVIEW_HEIGHT,
-                        true,
-                    ).is_ok()
-                }).await.unwrap_or(false);
+                // Load raw data from cache with timeout
+                let load_result = gio::spawn_blocking(move || {
+                    eprintln!("[CACHE] Attempting to load: {}", cache_path_str);
+
+                    // Use timeout for cache loading
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    let cache_path_str_clone = cache_path_str.clone();
+
+                    std::thread::spawn(move || {
+                        let result =
+                            Self::load_raw_cache(std::path::Path::new(&cache_path_str_clone));
+                        let _ = tx.send(result);
+                    });
+
+                    // Wait with timeout
+                    match rx.recv_timeout(std::time::Duration::from_millis(CACHE_TIMEOUT_MS)) {
+                        Ok(result) => {
+                            if result.is_none() {
+                                eprintln!("[CACHE] Failed to load cache");
+                            }
+                            result
+                        }
+                        Err(_) => {
+                            eprintln!("[CACHE] Timeout loading cache after {}ms", CACHE_TIMEOUT_MS);
+                            None
+                        }
+                    }
+                })
+                .await;
 
                 if current_task_id.load(Ordering::SeqCst) != task_id {
                     return;
                 }
 
-                if !cache_valid {
-                    let _ = std::fs::remove_file(&cache_path_str_for_remove);
-                }
-
                 content_scrolled.set_child(None::<&gtk4::Widget>);
 
-                if cache_valid {
-                    match Pixbuf::from_file_at_scale(
-                        std::path::Path::new(&cache_path_for_load),
-                        crate::constants::IMAGE_PREVIEW_WIDTH,
-                        crate::constants::IMAGE_PREVIEW_HEIGHT,
+                // Create Pixbuf on main thread
+                if let Ok(Some((raw_data, width, height))) = load_result {
+                    let pixbuf = Pixbuf::from_bytes(
+                        &glib::Bytes::from(&raw_data),
+                        gdk_pixbuf::Colorspace::Rgb,
                         true,
-                    ) {
-                        Ok(pixbuf) => {
-                            let picture = Picture::for_pixbuf(&pixbuf);
-                            picture.set_halign(Align::Center);
-                            picture.set_valign(Align::Center);
-                            picture.set_hexpand(true);
-                            picture.set_vexpand(true);
-                            Self::set_scrolled_content(&content_scrolled, &picture);
-                        }
-                        Err(_) => {
-                            let error_label = Label::new(Some("Failed to load image"));
-                            error_label.set_halign(Align::Center);
-                            error_label.set_valign(Align::Center);
-                            error_label.set_hexpand(true);
-                            error_label.set_vexpand(true);
-                            Self::set_scrolled_content(&content_scrolled, &error_label);
-                        }
-                    }
+                        8,
+                        width as i32,
+                        height as i32,
+                        (width * 4) as i32,
+                    );
+                    let picture = Picture::for_pixbuf(&pixbuf);
+                    picture.set_halign(Align::Center);
+                    picture.set_valign(Align::Center);
+                    picture.set_hexpand(true);
+                    picture.set_vexpand(true);
+                    Self::set_scrolled_content(&content_scrolled, &picture);
                 } else {
+                    // Cache corrupted or timeout, remove it in background
+                    gio::spawn_blocking(move || {
+                        let _ = std::fs::remove_file(&cache_path_for_delete);
+                    });
                     let error_label = Label::new(Some("Failed to load image"));
                     error_label.set_halign(Align::Center);
                     error_label.set_valign(Align::Center);
@@ -300,20 +457,11 @@ impl PreviewArea {
                     error_label.set_vexpand(true);
                     Self::set_scrolled_content(&content_scrolled, &error_label);
                 }
-
-                if let Ok(mut current_path) = current_loading_path.lock() {
-                    if current_path.as_ref() == Some(&path_str_owned) {
-                        *current_path = None;
-                    }
-                }
-
-                is_loading_flag.store(0, Ordering::SeqCst);
             }
         ));
     }
 
     fn update_with_dynamic_content(&self, item: &Item) {
-        // Use preview_template if available, otherwise default to cliphist decode
         let preview_cmd = if let Some(ref template) = item.preview_template {
             template.replace("{}", &item.value)
         } else {
@@ -338,6 +486,7 @@ impl PreviewArea {
                     let mut temp_file = match NamedTempFile::new() {
                         Ok(tf) => tf,
                         Err(_) => {
+                            self.details_scrolled.set_visible(true);
                             let details_text = format!(
                                 "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Error:</b> Could not create temporary file",
                                 glib::markup_escape_text(&item.title),
@@ -361,9 +510,7 @@ impl PreviewArea {
                     if temp_file.write_all(&output.stdout).is_ok() {
                         let path_str = temp_file.path().to_string_lossy().to_string();
 
-                        // Image mode: show details area
                         self.details_scrolled.set_visible(true);
-
                         let details_text = format!(
                             "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Path:</b> {}",
                             glib::markup_escape_text(&item.title),
@@ -390,7 +537,6 @@ impl PreviewArea {
                                 picture.set_vexpand(true);
                                 picture.add_css_class("preview-image");
                                 Self::set_scrolled_content(&self.content_scrolled, &picture);
-                                // Intentionally leak temp_file to keep it alive for the duration of the preview
                                 std::mem::forget(temp_file);
                             }
                             Err(_) => {
@@ -417,7 +563,6 @@ impl PreviewArea {
                         Self::set_scrolled_content(&self.content_scrolled, &error_label);
                     }
                 } else {
-                    // Text content: hide details area
                     self.details_scrolled.set_visible(false);
 
                     let details_text = format!(
@@ -440,7 +585,6 @@ impl PreviewArea {
                 }
             }
             _ => {
-                // Error case: show details area
                 self.details_scrolled.set_visible(true);
 
                 let details_text = format!(
@@ -463,7 +607,6 @@ impl PreviewArea {
     }
 
     fn update_with_image_content(&self, item: &Item) {
-        // Image mode: show details area
         self.details_scrolled.set_visible(true);
 
         let path = std::path::Path::new(&item.value);
@@ -493,11 +636,6 @@ impl PreviewArea {
             }
         }
 
-        if self.is_loading.load(Ordering::SeqCst) == 1 {
-            return;
-        }
-        self.is_loading.store(1, Ordering::SeqCst);
-
         let task_id = self.next_task_id.fetch_add(1, Ordering::SeqCst);
 
         if let Ok(mut current_path) = self.current_loading_path.lock() {
@@ -507,7 +645,6 @@ impl PreviewArea {
         self.current_task_id.store(task_id, Ordering::SeqCst);
 
         if !expanded_path.exists() {
-            self.is_loading.store(0, Ordering::SeqCst);
             glib::idle_add_local({
                 let content_scrolled_clone = self.content_scrolled.clone();
                 let path_str_clone = path_str.clone();
@@ -528,132 +665,234 @@ impl PreviewArea {
         }
 
         let cache_path = self.cache_dir.join(format!(
-            "{}_{}",
+            "{}_{}.raw",
             item.category,
             crate::utils::path_to_safe_filename(&expanded_path)
         ));
 
-        if cache_path.exists() {
-            self.load_image_from_cache(&cache_path, &expanded_path, task_id, &path_str);
+        // Check if this is a video that needs thumbnail generation
+        // Note: GIF can be loaded directly, only video needs ffmpeg
+        let needs_thumbnail = Self::is_video_file(&expanded_path);
+
+        // Try to load from cache if it exists and is up-to-date
+        if self.should_use_cache(&cache_path, &expanded_path) {
+            self.load_image_from_cache(&cache_path, task_id);
             return;
         }
 
-        self.load_image_from_original(&expanded_path, &cache_path, task_id, &path_str);
+        // No cache available
+        if needs_thumbnail {
+            // For video: must generate thumbnail first, then display
+            eprintln!(
+                "[LOAD] No cache, generating thumbnail for: {}",
+                expanded_path.display()
+            );
+            self.generate_and_display_thumbnail(&expanded_path, &cache_path, task_id);
+        } else {
+            // For static images and GIF: load directly and save cache in background
+            eprintln!(
+                "[LOAD] No cache, loading original for: {}",
+                expanded_path.display()
+            );
+            self.load_original_with_background_cache(&expanded_path, &cache_path, task_id);
+        }
     }
 
-    fn load_image_from_original(
+    /// Generate thumbnail and display (for video)
+    fn generate_and_display_thumbnail(
         &self,
         expanded_path: &std::path::Path,
         cache_path: &std::path::Path,
         task_id: u64,
-        _path_str: &str,
     ) {
-        let expanded_path_clone = expanded_path;
-        let cache_path_clone = cache_path;
-        let content_scrolled = self.content_scrolled.clone();
+        let expanded_path_clone = expanded_path.to_path_buf();
+        let _cache_path_clone = cache_path.to_path_buf();
         let cache_dir = self.cache_dir.clone();
-        let task_id_clone = task_id;
+        let content_scrolled = self.content_scrolled.clone();
         let current_task_id = self.current_task_id.clone();
+        let expected_task_id = task_id;
 
         self.clear_content();
-
-        let loading_label = Label::new(Some("Loading..."));
+        let loading_label = Label::new(Some("Generating thumbnail..."));
         loading_label.set_halign(Align::Center);
         loading_label.set_valign(Align::Center);
         loading_label.set_hexpand(true);
         loading_label.set_vexpand(true);
-        Self::set_scrolled_content(&self.content_scrolled, &loading_label);
-
-        let expanded_path_str = expanded_path_clone.to_string_lossy().to_string();
-        let cache_dir_str = cache_dir.to_string_lossy().to_string();
-        let cache_path_str = cache_path_clone.to_string_lossy().to_string();
-
-        let expanded_path_str_clone = expanded_path_str.clone();
-        let cache_dir_str_clone = cache_dir_str.clone();
-        let cache_path_str_clone = cache_path_str.clone();
-        let is_loading_flag = self.is_loading.clone();
+        Self::set_scrolled_content(&content_scrolled, &loading_label);
 
         glib::spawn_future_local(clone!(
             #[weak]
             content_scrolled,
             async move {
-                if current_task_id.load(Ordering::SeqCst) != task_id_clone {
+                if current_task_id.load(Ordering::SeqCst) != expected_task_id {
                     return;
                 }
 
-                let load_result = gio::spawn_blocking(move || {
-                    let expanded_path = std::path::Path::new(&expanded_path_str_clone);
-                    let cache_dir_path = std::path::Path::new(&cache_dir_str_clone);
-
-                    if Self::is_video_file(expanded_path) {
-                        Self::generate_video_thumbnail(expanded_path, cache_dir_path)
-                            .and_then(|thumb_path| {
-                                Self::load_image_data(
-                                    &thumb_path,
-                                    crate::constants::IMAGE_PREVIEW_WIDTH,
-                                    crate::constants::IMAGE_PREVIEW_HEIGHT,
-                                )
-                            })
+                // Generate thumbnail (this may take time for videos)
+                let result = gio::spawn_blocking(move || {
+                    if Self::is_video_file(&expanded_path_clone) {
+                        // Generate video thumbnail - this saves to cache_path_clone
+                        match Self::generate_video_thumbnail(&expanded_path_clone, &cache_dir) {
+                            Some(thumb_path) => {
+                                eprintln!("[LOAD] Video thumbnail generated: {:?}", thumb_path);
+                                // Load from the generated RAW cache
+                                Self::load_raw_cache(&thumb_path)
+                            }
+                            None => {
+                                eprintln!("[LOAD] Video thumbnail generation failed");
+                                None
+                            }
+                        }
                     } else {
-                        Self::load_image_data(
-                            expanded_path,
+                        // GIF - load directly
+                        Self::load_image_data_raw(
+                            &expanded_path_clone,
                             crate::constants::IMAGE_PREVIEW_WIDTH,
                             crate::constants::IMAGE_PREVIEW_HEIGHT,
                         )
                     }
-                }).await.unwrap_or(None);
+                })
+                .await;
 
-                if current_task_id.load(Ordering::SeqCst) != task_id_clone {
+                if current_task_id.load(Ordering::SeqCst) != expected_task_id {
                     return;
                 }
 
-                if let Some((raw_data, width, height)) = load_result {
-                    if let Some(pixbuf) = Self::create_pixbuf_from_data(raw_data, width, height) {
-                        let cache_path = std::path::Path::new(&cache_path_str_clone);
-                        let _ = pixbuf.savev(cache_path, "png", &[]);
-                        let expanded_path = std::path::Path::new(&expanded_path_str);
-                        if let Ok(src_meta) = expanded_path.metadata() {
-                            if let Ok(src_mtime) = src_meta.modified() {
-                                let _ = filetime::set_file_mtime(
-                                    cache_path,
-                                    filetime::FileTime::from_system_time(src_mtime),
-                                );
-                            }
-                        }
+                content_scrolled.set_child(None::<&gtk4::Widget>);
 
-                        content_scrolled.set_child(None::<&gtk4::Widget>);
-                        let picture = Picture::for_pixbuf(&pixbuf);
-                        picture.set_halign(Align::Center);
-                        picture.set_valign(Align::Center);
-                        picture.set_hexpand(true);
-                        picture.set_vexpand(true);
-                        content_scrolled.set_child(Some(&picture));
-                    } else {
-                        content_scrolled.set_child(None::<&gtk4::Widget>);
-                        let error_label = Label::new(Some("Failed to load image"));
-                        error_label.set_halign(Align::Center);
-                        error_label.set_valign(Align::Center);
-                        error_label.set_hexpand(true);
-                        error_label.set_vexpand(true);
-                        content_scrolled.set_child(Some(&error_label));
-                    }
+                if let Ok(Some((raw_data, width, height))) = result {
+                    // Display the loaded thumbnail
+                    let pixbuf = Pixbuf::from_bytes(
+                        &glib::Bytes::from(&raw_data),
+                        gdk_pixbuf::Colorspace::Rgb,
+                        true,
+                        8,
+                        width as i32,
+                        height as i32,
+                        (width * 4) as i32,
+                    );
+                    let picture = Picture::for_pixbuf(&pixbuf);
+                    picture.set_halign(Align::Center);
+                    picture.set_valign(Align::Center);
+                    picture.set_hexpand(true);
+                    picture.set_vexpand(true);
+                    Self::set_scrolled_content(&content_scrolled, &picture);
+                    eprintln!("[LOAD] Thumbnail displayed");
                 } else {
-                    content_scrolled.set_child(None::<&gtk4::Widget>);
+                    eprintln!("[LOAD] Failed to display thumbnail");
+                    let error_label = Label::new(Some("Failed to generate thumbnail"));
+                    error_label.set_halign(Align::Center);
+                    error_label.set_valign(Align::Center);
+                    error_label.set_hexpand(true);
+                    error_label.set_vexpand(true);
+                    error_label.add_css_class("error-label");
+                    Self::set_scrolled_content(&content_scrolled, &error_label);
+                }
+            }
+        ));
+    }
+
+    /// Load original image and save cache in background (for static images)
+    fn load_original_with_background_cache(
+        &self,
+        expanded_path: &std::path::Path,
+        cache_path: &std::path::Path,
+        task_id: u64,
+    ) {
+        let expanded_path_clone = expanded_path.to_path_buf();
+        let cache_path_clone = cache_path.to_path_buf();
+        let content_scrolled = self.content_scrolled.clone();
+        let current_task_id = self.current_task_id.clone();
+        let expected_task_id = task_id;
+
+        self.clear_content();
+        let loading_label = Label::new(Some("Loading..."));
+        loading_label.set_halign(Align::Center);
+        loading_label.set_valign(Align::Center);
+        loading_label.set_hexpand(true);
+        loading_label.set_vexpand(true);
+        Self::set_scrolled_content(&content_scrolled, &loading_label);
+
+        glib::spawn_future_local(clone!(
+            #[weak]
+            content_scrolled,
+            async move {
+                if current_task_id.load(Ordering::SeqCst) != expected_task_id {
+                    return;
+                }
+
+                // Load original with timeout
+                let load_result = gio::spawn_blocking(move || {
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    let expanded_path_clone_copy = expanded_path_clone.clone();
+
+                    std::thread::spawn(move || {
+                        let result = Self::load_image_data_raw(
+                            &expanded_path_clone_copy,
+                            crate::constants::IMAGE_PREVIEW_WIDTH,
+                            crate::constants::IMAGE_PREVIEW_HEIGHT,
+                        );
+                        let _ = tx.send(result);
+                    });
+
+                    match rx.recv_timeout(std::time::Duration::from_millis(DIRECT_LOAD_TIMEOUT_MS))
+                    {
+                        Ok(r) => r,
+                        Err(_) => {
+                            eprintln!("[LOAD] Timeout after {}ms", DIRECT_LOAD_TIMEOUT_MS);
+                            None
+                        }
+                    }
+                })
+                .await;
+
+                if current_task_id.load(Ordering::SeqCst) != expected_task_id {
+                    return;
+                }
+
+                content_scrolled.set_child(None::<&gtk4::Widget>);
+
+                if let Ok(Some((raw_data, width, height))) = load_result {
+                    // Save cache in background (don't wait)
+                    let cache_path_bg = cache_path_clone.clone();
+                    let raw_data_bg = raw_data.clone();
+                    glib::spawn_future_local(async move {
+                        let _ = gio::spawn_blocking(move || {
+                            let _ =
+                                Self::save_raw_cache(&cache_path_bg, &raw_data_bg, width, height);
+                        })
+                        .await;
+                    });
+
+                    let pixbuf = Pixbuf::from_bytes(
+                        &glib::Bytes::from(&raw_data),
+                        gdk_pixbuf::Colorspace::Rgb,
+                        true,
+                        8,
+                        width as i32,
+                        height as i32,
+                        (width * 4) as i32,
+                    );
+                    let picture = Picture::for_pixbuf(&pixbuf);
+                    picture.set_halign(Align::Center);
+                    picture.set_valign(Align::Center);
+                    picture.set_hexpand(true);
+                    picture.set_vexpand(true);
+                    Self::set_scrolled_content(&content_scrolled, &picture);
+                } else {
                     let error_label = Label::new(Some("Failed to load image"));
                     error_label.set_halign(Align::Center);
                     error_label.set_valign(Align::Center);
                     error_label.set_hexpand(true);
                     error_label.set_vexpand(true);
-                    content_scrolled.set_child(Some(&error_label));
+                    error_label.add_css_class("error-label");
+                    Self::set_scrolled_content(&content_scrolled, &error_label);
                 }
-
-                is_loading_flag.store(0, Ordering::SeqCst);
             }
         ));
     }
 
     fn update_with_text_content(&self, item: &Item) {
-        // Text mode: hide details area (full content shown in preview area)
         self.details_scrolled.set_visible(false);
 
         self.clear_content();

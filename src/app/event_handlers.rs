@@ -1,7 +1,7 @@
 use crate::app::application::Args;
 use crate::app::preview_manager::PreviewManager;
 use gtk4::{
-    prelude::*, ApplicationWindow, EventControllerKey, Label, ListBox, ListBoxRow, PropagationPhase,
+    ApplicationWindow, EventControllerKey, Label, ListBox, ListBoxRow, PropagationPhase, prelude::*,
 };
 
 pub struct EventHandler;

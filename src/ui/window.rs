@@ -1,4 +1,4 @@
-use gtk4::{prelude::WidgetExt, Application, ApplicationWindow, CssProvider};
+use gtk4::{Application, ApplicationWindow, CssProvider, prelude::WidgetExt};
 
 pub fn create_main_window(
     app: &Application,

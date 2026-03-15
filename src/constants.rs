@@ -9,4 +9,3 @@ pub const IMAGE_PREVIEW_HEIGHT: i32 = 600;
 pub const MAX_WINDOW_WIDTH_FRACTION: f64 = 0.3;
 pub const DEFAULT_WINDOW_WIDTH: i32 = 1200;
 pub const DEFAULT_WINDOW_HEIGHT: i32 = 800;
-pub const TEXT_MARGIN: i32 = 10;

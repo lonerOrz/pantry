@@ -1,5 +1,5 @@
 use clap::Parser;
-use gtk4::{prelude::*, Application, ListBox};
+use gtk4::{Application, ListBox, prelude::*};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::process::Command;

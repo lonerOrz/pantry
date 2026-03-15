@@ -1,7 +1,7 @@
-use glib::{subclass::prelude::*, Object};
+use glib::{Object, subclass::prelude::*};
+use gtk4::ListBoxRow;
 use gtk4::glib;
 use gtk4::prelude::ObjectExt;
-use gtk4::ListBoxRow;
 
 #[derive(Default)]
 pub struct ItemData {

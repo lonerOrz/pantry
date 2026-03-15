@@ -1,6 +1,6 @@
 use crate::domain::item::Item;
-use gtk4::prelude::WidgetExt;
 use gtk4::ListBox;
+use gtk4::prelude::WidgetExt;
 
 /// Service for managing item operations
 pub struct ItemService;

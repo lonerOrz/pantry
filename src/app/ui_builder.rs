@@ -1,13 +1,13 @@
 use gtk4::{
-    prelude::*, Application, ApplicationWindow, Box as GtkBox, Label, ListBox, Orientation,
-    Overlay, ScrolledWindow,
+    Application, ApplicationWindow, Box as GtkBox, Label, ListBox, Orientation, Overlay,
+    ScrolledWindow, prelude::*,
 };
 use std::cell::RefCell;
 use std::io::Read;
 use std::rc::Rc;
 
 use crate::app::application::Args;
-use crate::config::{get_config_display_mode, resolve_display_mode, DisplayMode, SourceMode};
+use crate::config::{DisplayMode, SourceMode, get_config_display_mode, resolve_display_mode};
 use crate::domain::item::Item;
 use crate::ui::{list, preview, window};
 use crate::window_state::WindowState;

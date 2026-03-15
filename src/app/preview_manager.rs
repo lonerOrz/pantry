@@ -13,8 +13,8 @@ impl PreviewManager {
         listbox: &ListBox,
         preview_area_rc_opt: &Option<Rc<RefCell<crate::ui::preview::PreviewArea>>>,
     ) {
-        use std::sync::atomic::{AtomicU64, Ordering};
         use std::sync::OnceLock;
+        use std::sync::atomic::{AtomicU64, Ordering};
 
         static LAST_UPDATE_TIME: OnceLock<AtomicU64> = OnceLock::new();
         let last_update = LAST_UPDATE_TIME.get_or_init(|| AtomicU64::new(0));
@@ -55,9 +55,11 @@ impl PreviewManager {
                                 async move {
                                     let result = gio::spawn_blocking(move || {
                                         execute_preview_command_sync(&template_owned, &item_value)
-                                    }).await;
+                                    })
+                                    .await;
 
-                                    let preview_content = result.unwrap_or_else(|_| "[Preview error]".to_string());
+                                    let preview_content =
+                                        result.unwrap_or_else(|_| "[Preview error]".to_string());
 
                                     let mut display_item = item_owned;
                                     display_item.value = preview_content;
