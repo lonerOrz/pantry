@@ -26,19 +26,15 @@ pub fn get_config_display_mode(
     category_filter: &Option<String>,
     display_arg: &Option<String>,
 ) -> DisplayMode {
-    if let Ok(content) = std::fs::read_to_string(config_path) {
-        if let Ok(config) = toml::from_str::<crate::config::parser::Config>(&content) {
-            if let Some(category) = category_filter {
-                if let Some(category_config) = config.categories.get(category) {
-                    return resolve_display_mode(
-                        display_arg,
-                        &category_config.display,
-                        &config.display,
-                    );
-                }
-            }
-            return resolve_display_mode(display_arg, &None, &config.display);
+    if let Ok(content) = std::fs::read_to_string(config_path)
+        && let Ok(config) = toml::from_str::<crate::config::parser::Config>(&content)
+    {
+        if let Some(category) = category_filter
+            && let Some(category_config) = config.categories.get(category)
+        {
+            return resolve_display_mode(display_arg, &category_config.display, &config.display);
         }
+        return resolve_display_mode(display_arg, &None, &config.display);
     }
     resolve_display_mode(display_arg, &None, &DisplayMode::Text)
 }

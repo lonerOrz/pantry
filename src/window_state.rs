@@ -21,12 +21,11 @@ impl Default for WindowState {
 
 impl WindowState {
     pub fn load() -> Self {
-        if let Some(config_path) = Self::get_config_path() {
-            if let Ok(contents) = fs::read_to_string(config_path) {
-                if let Ok(state) = toml::from_str(&contents) {
-                    return state;
-                }
-            }
+        if let Some(config_path) = Self::get_config_path()
+            && let Ok(contents) = fs::read_to_string(config_path)
+            && let Ok(state) = toml::from_str(&contents)
+        {
+            return state;
         }
 
         WindowState::default()

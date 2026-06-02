@@ -1,42 +1,9 @@
-use gtk4::{ListBox, ListBoxRow};
+use crate::ui::list::ListState;
 
 pub struct SearchLogic;
 
 impl SearchLogic {
-    pub fn setup_filter_func(listbox: &ListBox, query_state: crate::ui::search::SearchState) {
-        listbox.set_filter_func(Box::new(move |row: &ListBoxRow| -> bool {
-            let query = query_state.borrow();
-            if query.is_empty() {
-                return true;
-            }
-            if let Some(item_obj) = crate::app::item_object::ItemObject::from_row(row) {
-                if let Some(item) = item_obj.item() {
-                    let query_lower = query.to_lowercase();
-                    let title_lower = item.title.to_lowercase();
-                    let value_lower = item.value.to_lowercase();
-                    return title_lower == query_lower
-                        || value_lower == query_lower
-                        || title_lower.contains(&query_lower)
-                        || value_lower.contains(&query_lower)
-                        || fuzzy_match(&title_lower, &query_lower)
-                        || fuzzy_match(&value_lower, &query_lower);
-                }
-            }
-            false
-        }));
+    pub fn refresh_filter(list_state: &ListState) {
+        list_state.refresh_filter();
     }
-}
-
-fn fuzzy_match(text: &str, pattern: &str) -> bool {
-    let text_chars: Vec<char> = text.chars().collect();
-    let pattern_chars: Vec<char> = pattern.chars().collect();
-    let mut text_idx = 0;
-    let mut pattern_idx = 0;
-    while text_idx < text_chars.len() && pattern_idx < pattern_chars.len() {
-        if text_chars[text_idx] == pattern_chars[pattern_idx] {
-            pattern_idx += 1;
-        }
-        text_idx += 1;
-    }
-    pattern_idx == pattern_chars.len()
 }

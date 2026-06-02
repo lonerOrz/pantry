@@ -630,10 +630,10 @@ impl PreviewArea {
         let adjustment = self.details_scrolled.vadjustment();
         adjustment.set_value(0.0);
 
-        if let Ok(current_path) = self.current_loading_path.lock() {
-            if current_path.as_ref() == Some(&path_str) {
-                return;
-            }
+        if let Ok(current_path) = self.current_loading_path.lock()
+            && current_path.as_ref() == Some(&path_str)
+        {
+            return;
         }
 
         let task_id = self.next_task_id.fetch_add(1, Ordering::SeqCst);

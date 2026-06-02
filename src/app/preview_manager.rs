@@ -1,5 +1,5 @@
+use crate::ui::list::ListState;
 use glib::clone;
-use gtk4::ListBox;
 use gtk4::{gio, glib};
 use std::cell::RefCell;
 use std::process::Command;
@@ -10,7 +10,7 @@ pub struct PreviewManager;
 
 impl PreviewManager {
     pub fn update_preview(
-        listbox: &ListBox,
+        list_state: &ListState,
         preview_area_rc_opt: &Option<Rc<RefCell<crate::ui::preview::PreviewArea>>>,
     ) {
         use std::sync::OnceLock;
@@ -38,42 +38,39 @@ impl PreviewManager {
             return;
         }
 
-        if let Some(preview_area_rc) = preview_area_rc_opt {
-            if let Some(selected_row) = listbox.selected_row() {
-                if let Some(item_obj) = crate::app::item_object::ItemObject::from_row(&selected_row)
-                {
-                    if let Some(item) = item_obj.item() {
-                        if let Some(ref template) = item.preview_template {
-                            let preview_area = preview_area_rc.clone();
-                            let item_value = item.value.clone();
-                            let template_owned = template.clone();
-                            let item_owned = item.clone();
+        let Some(preview_area_rc) = preview_area_rc_opt else {
+            return;
+        };
+        let Some(item) = list_state.selected_item() else {
+            return;
+        };
 
-                            glib::spawn_future_local(clone!(
-                                #[weak]
-                                preview_area,
-                                async move {
-                                    let result = gio::spawn_blocking(move || {
-                                        execute_preview_command_sync(&template_owned, &item_value)
-                                    })
-                                    .await;
+        if let Some(ref template) = item.preview_template {
+            let preview_area = preview_area_rc.clone();
+            let item_value = item.value.clone();
+            let template_owned = template.clone();
+            let item_owned = item.clone();
 
-                                    let preview_content =
-                                        result.unwrap_or_else(|_| "[Preview error]".to_string());
+            glib::spawn_future_local(clone!(
+                #[weak]
+                preview_area,
+                async move {
+                    let result = gio::spawn_blocking(move || {
+                        execute_preview_command_sync(&template_owned, &item_value)
+                    })
+                    .await;
 
-                                    let mut display_item = item_owned;
-                                    display_item.value = preview_content;
-                                    let preview_area = &*preview_area.borrow();
-                                    preview_area.update_with_content(&display_item);
-                                }
-                            ));
-                        } else {
-                            let preview_area = &*preview_area_rc.borrow();
-                            preview_area.update_with_content(&item);
-                        }
-                    }
+                    let preview_content = result.unwrap_or_else(|_| "[Preview error]".to_string());
+
+                    let mut display_item = item_owned;
+                    display_item.value = preview_content;
+                    let preview_area = &*preview_area.borrow();
+                    preview_area.update_with_content(&display_item);
                 }
-            }
+            ));
+        } else {
+            let preview_area = &*preview_area_rc.borrow();
+            preview_area.update_with_content(&item);
         }
     }
 }

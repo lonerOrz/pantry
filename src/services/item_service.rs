@@ -1,6 +1,5 @@
 use crate::domain::item::Item;
-use gtk4::ListBox;
-use gtk4::prelude::WidgetExt;
+use crate::ui::list::ListState;
 
 /// Service for managing item operations
 pub struct ItemService;
@@ -15,21 +14,13 @@ impl ItemService {
             .collect()
     }
 
-    /// Add processed items to the UI listbox
-    pub fn add_items_to_listbox(listbox: &ListBox, items: &[Item]) {
-        for item in items {
-            let row = crate::ui::list::create_listbox_row(&item.title);
-            let item_obj = crate::app::item_object::ItemObject::new(item.clone());
-            item_obj.attach_to_row(&row);
-            listbox.append(&row);
-        }
+    /// Add processed items to the UI model
+    pub fn add_items_to_list(list_state: &ListState, items: &[Item]) {
+        list_state.append_items(items);
     }
 
-    /// Select the first item in the listbox
-    pub fn select_first_item(listbox: &ListBox) {
-        if let Some(first_row) = listbox.row_at_index(0) {
-            listbox.select_row(Some(&first_row));
-            first_row.grab_focus();
-        }
+    /// Select the first visible item in the list
+    pub fn select_first_item(list_state: &ListState) {
+        list_state.select_first();
     }
 }

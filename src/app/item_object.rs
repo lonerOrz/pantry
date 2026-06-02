@@ -1,16 +1,15 @@
 use glib::{Object, subclass::prelude::*};
-use gtk4::ListBoxRow;
 use gtk4::glib;
-use gtk4::prelude::ObjectExt;
 
 #[derive(Default)]
 pub struct ItemData {
-    pub item: std::cell::RefCell<Option<crate::domain::item::Item>>,
+    item: std::cell::RefCell<Option<crate::domain::item::Item>>,
+    search_text: std::cell::RefCell<String>,
 }
 
 #[glib::object_subclass]
 impl ObjectSubclass for ItemData {
-    const NAME: &'static str = "ItemData";
+    const NAME: &'static str = "PantryItemObject";
     type Type = ItemObject;
 }
 
@@ -23,7 +22,7 @@ glib::wrapper! {
 impl ItemObject {
     pub fn new(item: crate::domain::item::Item) -> Self {
         let obj: Self = Object::new();
-        obj.imp().item.replace(Some(item));
+        obj.set_item(item);
         obj
     }
 
@@ -32,22 +31,21 @@ impl ItemObject {
     }
 
     pub fn set_item(&self, item: crate::domain::item::Item) {
+        let search_text =
+            format!("{}\n{}\n{}", item.title, item.value, item.category).to_lowercase();
+        self.imp().search_text.replace(search_text);
         self.imp().item.replace(Some(item));
     }
 
-    /// Safe wrapper to get ItemObject from ListBoxRow
-    /// Returns None if no item is attached
-    pub fn from_row(row: &ListBoxRow) -> Option<ItemObject> {
-        unsafe {
-            row.data::<ItemObject>("item")
-                .map(|ptr| ptr.as_ref().clone())
-        }
+    pub fn title(&self) -> String {
+        self.item().map(|item| item.title).unwrap_or_default()
     }
 
-    /// Attach ItemObject to ListBoxRow
-    pub fn attach_to_row(&self, row: &ListBoxRow) {
-        unsafe {
-            row.set_data("item", self.clone());
-        }
+    pub fn value(&self) -> String {
+        self.item().map(|item| item.value).unwrap_or_default()
+    }
+
+    pub fn search_text(&self) -> String {
+        self.imp().search_text.borrow().clone()
     }
 }

@@ -1,14 +1,14 @@
 use clap::Parser;
-use gtk4::{Application, ListBox, prelude::*};
+use gtk4::{Application, gio, prelude::*};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::process::Command;
 use std::rc::Rc;
 
-use crate::app::{event_handlers::EventHandler, search_logic::SearchLogic, ui_builder::UiBuilder};
+use crate::app::{event_handlers::EventHandler, ui_builder::UiBuilder};
 use crate::config::{Category, Config, DisplayMode, SourceMode};
 use crate::domain::item::Item;
-use crate::ui::preview;
+use crate::ui::{list::ListState, preview};
 use crate::window_state::WindowState;
 
 #[derive(Debug, Parser)]
@@ -69,16 +69,19 @@ impl PantryApp {
     fn build_ui(&self, app: &Application) {
         match &self.input_mode {
             InputMode::Stdin => {
-                let (window, listbox, preview_area_rc_opt, search_label) =
-                    UiBuilder::build_stdin_ui(&self.args, &self.window_state, app);
-
                 let search_query: crate::ui::search::SearchState =
                     Rc::new(RefCell::new(String::new()));
-                SearchLogic::setup_filter_func(&listbox, search_query.clone());
+                let (window, list_state, preview_area_rc_opt, search_label) =
+                    UiBuilder::build_stdin_ui(
+                        &self.args,
+                        &self.window_state,
+                        app,
+                        search_query.clone(),
+                    );
 
                 EventHandler::setup_keyboard_controller(
                     &window,
-                    &listbox,
+                    &list_state,
                     search_query,
                     search_label,
                     &self.args,
@@ -88,16 +91,19 @@ impl PantryApp {
                 window.present();
             }
             InputMode::Config => {
-                let (window, listbox, preview_area_rc_opt, search_label) =
-                    UiBuilder::build_config_ui(&self.args, &self.window_state, app);
-
                 let search_query: crate::ui::search::SearchState =
                     Rc::new(RefCell::new(String::new()));
-                SearchLogic::setup_filter_func(&listbox, search_query.clone());
+                let (window, list_state, preview_area_rc_opt, search_label) =
+                    UiBuilder::build_config_ui(
+                        &self.args,
+                        &self.window_state,
+                        app,
+                        search_query.clone(),
+                    );
 
                 EventHandler::setup_keyboard_controller(
                     &window,
-                    &listbox,
+                    &list_state,
                     search_query,
                     search_label,
                     &self.args,
@@ -105,7 +111,7 @@ impl PantryApp {
                 );
 
                 self.load_items_from_config(
-                    &listbox,
+                    &list_state,
                     &self.args.config,
                     &self.args.category,
                     &self.args.display,
@@ -119,7 +125,7 @@ impl PantryApp {
 
     fn load_items_from_config(
         &self,
-        listbox: &ListBox,
+        list_state: &ListState,
         config_path: &str,
         category_filter: &Option<String>,
         display_arg: &Option<String>,
@@ -128,99 +134,101 @@ impl PantryApp {
         let config_path = config_path.to_string();
         let category_filter = category_filter.clone();
         let display_arg = display_arg.clone();
-        let listbox_weak = listbox.downgrade();
+        let list_state = list_state.clone();
         let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
 
         glib::spawn_future_local(async move {
-            let content = match std::fs::read_to_string(&config_path) {
-                Ok(c) => c,
-                Err(e) => {
-                    eprintln!("Failed to read config file {}: {}", config_path, e);
+            let load_result = gio::spawn_blocking(move || {
+                load_items_from_config_sync(&config_path, &category_filter, &display_arg)
+            })
+            .await;
+
+            let processed_items = match load_result {
+                Ok(Ok(items)) => items,
+                Ok(Err(e)) => {
+                    eprintln!("{}", e);
                     return;
                 }
-            };
-
-            let config: Config = match toml::from_str(&content) {
-                Ok(c) => c,
                 Err(e) => {
-                    eprintln!("Failed to parse config file {}: {}", config_path, e);
-                    return;
-                }
-            };
-
-            let mut items = Vec::new();
-
-            // Determine which categories to load
-            let categories_to_load: Vec<(&String, &Category)> = config
-                .categories
-                .iter()
-                .filter(|(name, cat_cfg)| {
-                    if let Some(ref filter) = category_filter {
-                        *name == filter
+                    let panic_msg = if let Some(s) = e.downcast_ref::<&'static str>() {
+                        *s
+                    } else if let Some(s) = e.downcast_ref::<String>() {
+                        s.as_str()
                     } else {
-                        display_arg.is_some()
-                            || cat_cfg.display.as_ref().unwrap_or(&config.display)
-                                == &config.display
-                    }
-                })
-                .collect();
-
-            // Load items from each category
-            for (category_name, category_config) in categories_to_load {
-                let effective_display = crate::config::resolve_display_mode(
-                    &display_arg,
-                    &category_config.display,
-                    &config.display,
-                );
-                let effective_source = category_config
-                    .source
-                    .clone()
-                    .unwrap_or(config.source.clone());
-
-                load_items_from_category(
-                    category_name,
-                    category_config,
-                    effective_display,
-                    effective_source,
-                    &mut items,
-                );
-            }
-
-            let processed_items = crate::services::ItemService::process_items_for_display(items);
-
-            let listbox_weak_clone = listbox_weak.clone();
-            let preview_area_rc_opt_clone = preview_area_rc_opt_clone.clone();
-
-            glib::idle_add_local(move || {
-                if let Some(listbox_strong) = listbox_weak_clone.upgrade() {
-                    crate::services::ItemService::add_items_to_listbox(
-                        &listbox_strong,
-                        &processed_items,
+                        "Unknown panic payload"
+                    };
+                    eprintln!(
+                        "Failed to load config items (thread panicked): {}",
+                        panic_msg
                     );
-
-                    crate::services::ItemService::select_first_item(&listbox_strong);
-
-                    glib::timeout_add_local(
-                        std::time::Duration::from_millis(
-                            crate::constants::INITIAL_PREVIEW_DELAY_MS,
-                        ),
-                        {
-                            let listbox_clone = listbox_strong.clone();
-                            let preview_area_rc_opt_clone = preview_area_rc_opt_clone.clone();
-                            move || {
-                                crate::app::preview_manager::PreviewManager::update_preview(
-                                    &listbox_clone,
-                                    &preview_area_rc_opt_clone,
-                                );
-                                glib::ControlFlow::Break
-                            }
-                        },
-                    );
+                    return;
                 }
-                glib::ControlFlow::Break
-            });
+            };
+
+            crate::services::ItemService::add_items_to_list(&list_state, &processed_items);
+            crate::services::ItemService::select_first_item(&list_state);
+
+            glib::timeout_add_local(
+                std::time::Duration::from_millis(crate::constants::INITIAL_PREVIEW_DELAY_MS),
+                {
+                    let list_state_clone = list_state.clone();
+                    let preview_area_rc_opt_clone = preview_area_rc_opt_clone.clone();
+                    move || {
+                        crate::app::preview_manager::PreviewManager::update_preview(
+                            &list_state_clone,
+                            &preview_area_rc_opt_clone,
+                        );
+                        glib::ControlFlow::Break
+                    }
+                },
+            );
         });
     }
+}
+
+fn load_items_from_config_sync(
+    config_path: &str,
+    category_filter: &Option<String>,
+    display_arg: &Option<String>,
+) -> Result<Vec<Item>, String> {
+    let content = std::fs::read_to_string(config_path)
+        .map_err(|e| format!("Failed to read config file {}: {}", config_path, e))?;
+
+    let config: Config = toml::from_str(&content)
+        .map_err(|e| format!("Failed to parse config file {}: {}", config_path, e))?;
+
+    let mut items = Vec::new();
+
+    for (category_name, category_config) in config.categories.iter().filter(|(name, cat_cfg)| {
+        if let Some(filter) = category_filter {
+            *name == filter
+        } else {
+            display_arg.is_some()
+                || cat_cfg.display.as_ref().unwrap_or(&config.display) == &config.display
+        }
+    }) {
+        let effective_display = crate::config::resolve_display_mode(
+            display_arg,
+            &category_config.display,
+            &config.display,
+        );
+        let effective_source = category_config
+            .source
+            .clone()
+            .unwrap_or(config.source.clone());
+
+        load_items_from_category(
+            category_name,
+            category_config,
+            effective_display,
+            effective_source,
+            &mut items,
+        );
+    }
+
+    Ok(crate::services::ItemService::process_items_for_display(
+        items,
+    ))
 }
 
 /// Load items from a single category
