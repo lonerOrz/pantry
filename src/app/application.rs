@@ -40,7 +40,7 @@ pub struct PantryApp {
 impl PantryApp {
     pub fn new() -> Self {
         let args = Args::parse();
-        let input_mode = if !atty::is(atty::Stream::Stdin) {
+        let input_mode = if is_stdin_piped_or_redirected() {
             InputMode::Stdin
         } else {
             InputMode::Config
@@ -310,5 +310,22 @@ fn execute_command(command: &str) -> Result<String, Box<dyn std::error::Error>> 
     } else {
         let error_msg = String::from_utf8(output.stderr)?;
         Err(format!("Command failed: {}", error_msg).into())
+    }
+}
+
+fn is_stdin_piped_or_redirected() -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileTypeExt;
+        if let Ok(metadata) = std::fs::metadata("/dev/stdin") {
+            let file_type = metadata.file_type();
+            file_type.is_fifo() || file_type.is_file()
+        } else {
+            false
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        !atty::is(atty::Stream::Stdin)
     }
 }
