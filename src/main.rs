@@ -1,4 +1,5 @@
 mod app;
+mod cache;
 mod config;
 mod constants;
 mod domain;

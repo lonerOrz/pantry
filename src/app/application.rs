@@ -280,7 +280,7 @@ fn load_items_from_category(
         SourceMode::Dynamic => {
             for (list_cmd, preview_template) in &category_config.entries {
                 if let Ok(dynamic_items) =
-                    crate::domain::item::ItemProcessor::process_dynamic_source(
+                    crate::services::expansion::ItemProcessor::process_dynamic_source(
                         list_cmd,
                         preview_template,
                     )
