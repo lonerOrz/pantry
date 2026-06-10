@@ -1,19 +1,29 @@
-/* 基础系统色 */
 @define-color window_bg @theme_bg_color;
 @define-color card_bg @theme_base_color;
 @define-color text @theme_fg_color;
 @define-color text_dim @insensitive_fg_color;
 @define-color accent @theme_selected_bg_color;
-@define-color border @borders;
+@define-color border alpha(currentColor, 0.08);
 
-/* 列表容器 */
-listview {
-  background: @card_bg;
-  border-radius: 8px;
-  padding: 4px;
+.pantry-main-frame {
+  background-color: @window_bg;
+  border: 1px solid @border;
+  border-radius: 12px;
+  box-shadow:
+    0 10px 30px alpha(black, 0.12),
+    0 1px 3px alpha(black, 0.04);
+  margin: 1px;
 }
 
-/* 列表行重置 */
+.transparent-window-bg {
+  background: transparent;
+}
+
+listview {
+  background: transparent;
+  padding: 8px;
+}
+
 listview row {
   background: transparent;
   padding: 0;
@@ -23,58 +33,133 @@ listview row {
   box-shadow: none;
 }
 
-/* 列表项样式 */
 .bookmark-row {
   padding: 10px 16px;
   border-radius: 8px;
-  background: transparent;
+  background-color: transparent;
+  transition: all 150ms cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-/* 悬停效果 */
 listview row:hover .bookmark-row {
-  background: alpha(@accent, 0.08);
+  background-color: alpha(currentColor, 0.04);
 }
 
-/* 选中效果 */
 listview row:selected .bookmark-row {
-  background: @accent;
+  background-color: @accent;
 }
 listview row:selected .bookmark-row label {
   color: @theme_selected_fg_color;
 }
 
-/* 键盘焦点样式 */
 listview row:focus-within .bookmark-row {
-  box-shadow: 0 0 0 1px alpha(@accent, 0.4);
+  box-shadow: 0 0 0 2px alpha(@accent, 0.4);
 }
 
-/* 标题文字 */
 .bookmark-row label:first-child {
-  font-size: 1em;
+  font-size: 0.95em;
   font-weight: 500;
   color: @text;
-  ellipsize: end;
 }
 
-/* 描述文字 */
 .dim-label {
-  font-size: 0.85em;
+  font-size: 0.82em;
   color: @text_dim;
-  margin-top: 2px;
+  margin-top: 3px;
+  opacity: 0.75;
 }
 
-/* 滚动区域 */
+.empty-placeholder-box {
+  padding: 48px 24px;
+}
+
+.empty-placeholder-icon-wrapper {
+  background-color: alpha(currentColor, 0.03);
+  border: 1px solid alpha(currentColor, 0.04);
+  border-radius: 9999px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.empty-placeholder-icon-wrapper image {
+  color: @text_dim;
+  opacity: 0.5;
+}
+
+.empty-placeholder-text {
+  font-size: 1.15em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: @text;
+}
+
+.empty-placeholder-subtitle {
+  font-size: 0.88em;
+  color: @text_dim;
+  opacity: 0.65;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.app-notification {
+  background: alpha(@card_bg, 0.95);
+  color: @text;
+  border: 1px solid alpha(currentColor, 0.1);
+  border-radius: 9999px;
+  padding: 8px 18px;
+  box-shadow: 0 6px 20px alpha(black, 0.1);
+  font-weight: 500;
+  font-size: 0.9em;
+  margin-bottom: 24px;
+}
+
+.app-notification.hidden {
+  opacity: 0;
+}
+
 scrolledwindow {
   background: transparent;
   border: none;
 }
 
-/* 窗口背景 */
-window {
-  background: @window_bg;
+scrollbar {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
 }
 
-/* 分割线 */
+scrollbar.vertical {
+  min-width: 4px;
+}
+
+scrollbar.vertical slider {
+  min-width: 4px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+scrollbar.horizontal {
+  min-height: 4px;
+}
+
+scrollbar.horizontal slider {
+  min-height: 4px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+scrollbar slider {
+  background: alpha(currentColor, 0.15);
+  border-radius: 9999px;
+  transition: background 150ms ease-out;
+}
+
+scrollbar:hover slider {
+  background: alpha(currentColor, 0.35);
+}
+
 paned > separator {
   background: @border;
   min-width: 1px;
@@ -84,7 +169,6 @@ paned > separator {
   margin: 10px 12px;
 }
 
-/* 预览区域文字 */
 .preview-details-label {
   color: @text_dim;
   padding: 12px 16px;
@@ -93,18 +177,4 @@ paned > separator {
 .preview-details-label b {
   color: @text;
   font-weight: 500;
-}
-
-/* 底部提示条 */
-.app-notification {
-  background: alpha(@card_bg, 0.95);
-  color: @text;
-  border: 1px solid @border;
-  border-radius: 8px;
-  padding: 6px 14px;
-  box-shadow: 0 2px 8px alpha(black, 0.08);
-}
-.app-notification.hidden {
-  opacity: 0;
-  transform: translateY(6px);
 }

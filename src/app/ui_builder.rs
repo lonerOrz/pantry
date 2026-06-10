@@ -1,6 +1,6 @@
 use gtk4::{
-    Application, ApplicationWindow, Box as GtkBox, Label, Orientation, Overlay, ScrolledWindow,
-    prelude::*,
+    Align, Application, ApplicationWindow, Box as GtkBox, Label, Orientation, Overlay,
+    ScrolledWindow, prelude::*,
 };
 use std::cell::RefCell;
 use std::io::Read;
@@ -33,6 +33,7 @@ impl UiBuilder {
 
         let window = window::create_main_window(app, args);
         window.set_default_size(window_state.width, window_state.height);
+        window.add_css_class("transparent-window-bg");
 
         if window_state.maximized {
             window.maximize();
@@ -43,7 +44,11 @@ impl UiBuilder {
         let (main_widget, preview_area_rc_opt) =
             build_main_widget(&list_state, display_mode.clone());
 
-        let (overlay, search_label) = create_search_overlay(&main_widget);
+        let frame_wrapper = GtkBox::new(Orientation::Vertical, 0);
+        frame_wrapper.add_css_class("pantry-main-frame");
+        frame_wrapper.append(&main_widget);
+
+        let (overlay, search_label) = create_search_overlay(&frame_wrapper);
         window.set_child(Some(&overlay));
 
         for line in stdin_data.lines().filter(|line| !line.trim().is_empty()) {
@@ -82,6 +87,7 @@ impl UiBuilder {
     ) {
         let window = window::create_main_window(app, args);
         window.set_default_size(window_state.width, window_state.height);
+        window.add_css_class("transparent-window-bg");
 
         if window_state.maximized {
             window.maximize();
@@ -92,7 +98,11 @@ impl UiBuilder {
         let (main_widget, preview_area_rc_opt) =
             build_main_widget(&list_state, display_mode.clone());
 
-        let (overlay, search_label) = create_search_overlay(&main_widget);
+        let frame_wrapper = GtkBox::new(Orientation::Vertical, 0);
+        frame_wrapper.add_css_class("pantry-main-frame");
+        frame_wrapper.append(&main_widget);
+
+        let (overlay, search_label) = create_search_overlay(&frame_wrapper);
         window.set_child(Some(&overlay));
         setup_preview_updates(
             &window,
@@ -107,6 +117,64 @@ impl UiBuilder {
 }
 
 fn build_main_widget(
+    list_state: &ListState,
+    display_mode: DisplayMode,
+) -> (gtk4::Widget, Option<Rc<RefCell<preview::PreviewArea>>>) {
+    let (content_widget, preview_area_rc_opt) = build_content(list_state, display_mode);
+
+    let list_stack = gtk4::Stack::new();
+    list_stack.set_transition_type(gtk4::StackTransitionType::Crossfade);
+    list_stack.set_transition_duration(150);
+
+    list_stack.add_titled(&content_widget, Some("content"), "Content");
+
+    let empty_box = gtk4::Box::new(Orientation::Vertical, 0);
+    empty_box.set_valign(Align::Center);
+    empty_box.set_halign(Align::Center);
+    empty_box.add_css_class("empty-placeholder-box");
+
+    let icon_wrapper = gtk4::Box::new(Orientation::Vertical, 0);
+    icon_wrapper.add_css_class("empty-placeholder-icon-wrapper");
+    icon_wrapper.set_halign(Align::Center);
+    icon_wrapper.set_valign(Align::Center);
+
+    let empty_icon = gtk4::Image::from_icon_name("system-search-symbolic");
+    empty_icon.set_pixel_size(36);
+    icon_wrapper.append(&empty_icon);
+
+    let empty_label = Label::new(Some("No Matching Results"));
+    empty_label.add_css_class("empty-placeholder-text");
+
+    let empty_sub_label = Label::new(Some("Try entering different terms or check your spelling."));
+    empty_sub_label.add_css_class("empty-placeholder-subtitle");
+
+    empty_box.append(&icon_wrapper);
+    empty_box.append(&empty_label);
+    empty_box.append(&empty_sub_label);
+
+    list_stack.add_titled(&empty_box, Some("empty"), "Empty");
+
+    let list_stack_clone = list_stack.clone();
+    let sort_model_clone = list_state.sort_model.clone();
+
+    if sort_model_clone.n_items() == 0 {
+        list_stack_clone.set_visible_child_name("empty");
+    } else {
+        list_stack_clone.set_visible_child_name("content");
+    }
+
+    sort_model_clone.connect_items_changed(move |model, _, _, _| {
+        if model.n_items() == 0 {
+            list_stack_clone.set_visible_child_name("empty");
+        } else {
+            list_stack_clone.set_visible_child_name("content");
+        }
+    });
+
+    (list_stack.upcast::<gtk4::Widget>(), preview_area_rc_opt)
+}
+
+fn build_content(
     list_state: &ListState,
     display_mode: DisplayMode,
 ) -> (gtk4::Widget, Option<Rc<RefCell<preview::PreviewArea>>>) {
