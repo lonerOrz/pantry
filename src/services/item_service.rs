@@ -10,7 +10,7 @@ impl ItemService {
         use rayon::prelude::*;
         items
             .par_iter()
-            .flat_map(crate::domain::item::ItemProcessor::process_for_display)
+            .flat_map(crate::services::expansion::ItemProcessor::process_for_display)
             .collect()
     }
 

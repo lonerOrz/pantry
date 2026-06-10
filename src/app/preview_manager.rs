@@ -1,43 +1,21 @@
+use crate::services::preview::{PreviewPayload, PreviewService};
 use crate::ui::list::ListState;
-use glib::clone;
+use crate::ui::preview::PreviewArea;
 use gtk4::{gio, glib};
 use std::cell::RefCell;
-use std::process::Command;
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static PREVIEW_SERVICE: OnceLock<PreviewService> = OnceLock::new();
 
 pub struct PreviewManager;
 
 impl PreviewManager {
     pub fn update_preview(
         list_state: &ListState,
-        preview_area_rc_opt: &Option<Rc<RefCell<crate::ui::preview::PreviewArea>>>,
+        preview_area_rc_opt: &Option<Rc<RefCell<PreviewArea>>>,
     ) {
-        use std::sync::OnceLock;
-        use std::sync::atomic::{AtomicU64, Ordering};
-
-        static LAST_UPDATE_TIME: OnceLock<AtomicU64> = OnceLock::new();
-        let last_update = LAST_UPDATE_TIME.get_or_init(|| AtomicU64::new(0));
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-
-        let prev_time = last_update.load(Ordering::Relaxed);
-        if prev_time != 0
-            && now.saturating_sub(prev_time) < crate::constants::PREVIEW_UPDATE_THROTTLE_MS
-        {
-            return;
-        }
-
-        if last_update
-            .compare_exchange(prev_time, now, Ordering::Relaxed, Ordering::Relaxed)
-            .is_err()
-        {
-            return;
-        }
-
         let Some(preview_area_rc) = preview_area_rc_opt else {
             return;
         };
@@ -45,46 +23,45 @@ impl PreviewManager {
             return;
         };
 
-        if let Some(ref template) = item.preview_template {
-            let preview_area = preview_area_rc.clone();
-            let item_value = item.value.clone();
-            let template_owned = template.clone();
-            let item_owned = item.clone();
+        static NEXT_TASK_ID: OnceLock<AtomicU64> = OnceLock::new();
+        static ACTIVE_TASK_ID: OnceLock<AtomicU64> = OnceLock::new();
+        let next_id = NEXT_TASK_ID.get_or_init(|| AtomicU64::new(1));
+        let active_id = ACTIVE_TASK_ID.get_or_init(|| AtomicU64::new(0));
 
-            glib::spawn_future_local(clone!(
-                #[weak]
-                preview_area,
-                async move {
-                    let result = gio::spawn_blocking(move || {
-                        execute_preview_command_sync(&template_owned, &item_value)
-                    })
-                    .await;
+        let task_id = next_id.fetch_add(1, Ordering::SeqCst);
+        active_id.store(task_id, Ordering::SeqCst);
 
-                    let preview_content = result.unwrap_or_else(|_| "[Preview error]".to_string());
+        preview_area_rc
+            .borrow()
+            .render(PreviewPayload::Text("Loading...".to_string()), &item);
 
-                    let mut display_item = item_owned;
-                    display_item.value = preview_content;
-                    let preview_area = &*preview_area.borrow();
-                    preview_area.update_with_content(&display_item);
+        let preview_area = preview_area_rc.clone();
+        let service = PREVIEW_SERVICE.get_or_init(PreviewService::new);
+        let item_clone = item.clone();
+
+        glib::spawn_future_local(async move {
+            if active_id.load(Ordering::SeqCst) != task_id {
+                return;
+            }
+
+            let payload_result =
+                gio::spawn_blocking(move || service.resolve_payload(&item_clone)).await;
+
+            if active_id.load(Ordering::SeqCst) != task_id {
+                return;
+            }
+
+            match payload_result {
+                Ok(payload) => {
+                    preview_area.borrow().render(payload, &item);
                 }
-            ));
-        } else {
-            let preview_area = &*preview_area_rc.borrow();
-            preview_area.update_with_content(&item);
-        }
-    }
-}
-
-fn execute_preview_command_sync(template: &str, item_value: &str) -> String {
-    let command = template.replace("{}", item_value);
-    match Command::new("sh").arg("-c").arg(&command).output() {
-        Ok(output) if output.status.success() => {
-            String::from_utf8_lossy(&output.stdout).to_string()
-        }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            format!("[Preview error: {}]", stderr.trim())
-        }
-        Err(e) => format!("[Preview error: {}]", e),
+                Err(_) => {
+                    preview_area.borrow().render(
+                        PreviewPayload::Error("Preview generation panicked".to_string()),
+                        &item,
+                    );
+                }
+            }
+        });
     }
 }
