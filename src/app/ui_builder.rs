@@ -33,7 +33,6 @@ impl UiBuilder {
         let (main_widget, preview_area_rc_opt) =
             build_main_widget(&list_state, display_mode.clone());
 
-        // Header bar layout: Title + SearchEntry + MenuButton
         let header_bar = HeaderBar::new();
         header_bar.set_show_title_buttons(true);
 
@@ -45,26 +44,27 @@ impl UiBuilder {
         search_entry.add_css_class("pantry-search-entry");
         header_bar.set_title_widget(Some(&search_entry));
 
-        // Replaced MenuButton with a standard Button to handle custom clicked signals.
         let menu_button = Button::from_icon_name("open-menu-symbolic");
         menu_button.add_css_class("flat");
         header_bar.pack_end(&menu_button);
 
-        // Connect the click signal to present the native, high-end GTK4 AboutDialog.
         let window_clone = window.clone();
         menu_button.connect_clicked(move |_| {
             let about = AboutDialog::new();
             about.set_transient_for(Some(&window_clone));
             about.set_modal(true);
             about.set_program_name(Some("pantry"));
-            // Dynamically resolve package version from Cargo.toml at compile-time.
             about.set_version(Some(env!("CARGO_PKG_VERSION")));
+            about.set_copyright(Some("© 2025, lonerorz"));
             about.set_comments(Some(
                 "A generic selector tool with text and image preview modes",
             ));
             about.set_website(Some("https://github.com/lonerOrz/pantry"));
-            about.set_license_type(gtk4::License::Bsd);
-            about.set_authors(&["lonerorz"]);
+            about.set_website_label("GitHub Repository");
+            about.set_license(Some(include_str!("../../LICENSE")));
+            about.set_authors(&["lonerorz <2788892716@qq.com>"]);
+            about.set_artists(&["lonerorz"]);
+            about.set_logo_icon_name(Some("system-search-symbolic"));
             about.present();
         });
 
@@ -75,7 +75,6 @@ impl UiBuilder {
 
         window.set_child(Some(&frame_wrapper));
 
-        // Let SearchEntry capture standard key inputs while keeping focus on ListView
         search_entry.set_key_capture_widget(Some(&window));
 
         let list_state_clone = list_state.clone();
@@ -130,7 +129,6 @@ impl UiBuilder {
             glib::ControlFlow::Continue
         });
 
-        // Grabbing focus on the ListView on startup.
         list_state.view.grab_focus();
 
         setup_preview_updates(
@@ -167,7 +165,6 @@ impl UiBuilder {
         let (main_widget, preview_area_rc_opt) =
             build_main_widget(&list_state, display_mode.clone());
 
-        // Top bar layout: Project Label + Search Box + System Menu.
         let header_bar = HeaderBar::new();
         header_bar.set_show_title_buttons(true);
 
@@ -179,12 +176,10 @@ impl UiBuilder {
         search_entry.add_css_class("pantry-search-entry");
         header_bar.set_title_widget(Some(&search_entry));
 
-        // Replaced MenuButton with a standard Button to handle custom clicked signals.
         let menu_button = Button::from_icon_name("open-menu-symbolic");
         menu_button.add_css_class("flat");
         header_bar.pack_end(&menu_button);
 
-        // Connect the click signal to present the native, high-end GTK4 AboutDialog.
         let window_clone = window.clone();
         menu_button.connect_clicked(move |_| {
             let about = AboutDialog::new();
@@ -192,12 +187,16 @@ impl UiBuilder {
             about.set_modal(true);
             about.set_program_name(Some("pantry"));
             about.set_version(Some(env!("CARGO_PKG_VERSION")));
+            about.set_copyright(Some("© 2025, lonerorz"));
             about.set_comments(Some(
                 "A generic selector tool with text and image preview modes",
             ));
             about.set_website(Some("https://github.com/lonerOrz/pantry"));
-            about.set_license_type(gtk4::License::Bsd);
-            about.set_authors(&["lonerorz"]);
+            about.set_website_label("GitHub Repository");
+            about.set_license(Some(include_str!("../../LICENSE")));
+            about.set_authors(&["lonerorz <2788892716@qq.com>"]);
+            about.set_artists(&["lonerorz"]);
+            about.set_logo_icon_name(Some("system-search-symbolic"));
             about.present();
         });
 
@@ -208,10 +207,8 @@ impl UiBuilder {
 
         window.set_child(Some(&frame_wrapper));
 
-        // Let SearchEntry capture standard key inputs while keeping focus on ListView
         search_entry.set_key_capture_widget(Some(&window));
 
-        // Grabbing focus on the ListView on startup.
         list_state.view.grab_focus();
 
         let list_state_clone = list_state.clone();

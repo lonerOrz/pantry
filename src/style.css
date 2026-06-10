@@ -3,34 +3,25 @@
 @define-color text @theme_fg_color;
 @define-color text_dim @insensitive_fg_color;
 @define-color accent @theme_selected_bg_color;
-@define-color border alpha(currentColor, 0.08); /* Transparent subtle 1px border */
+@define-color border alpha(currentColor, 0.08);
 
-/*
- * 1. Absolute Single Surface Uniformity
- */
 .pantry-main-frame,
-headerbar,
-listview,
-scrolledwindow,
-viewport,
-grid {
+.pantry-main-frame headerbar,
+.pantry-main-frame listview,
+.pantry-main-frame scrolledwindow,
+.pantry-main-frame viewport,
+.pantry-main-frame grid {
   background-color: @card_bg !important;
   box-shadow: none !important;
   text-shadow: none !important;
 }
 
-/*
- * 2. Main Window Outer Frame
- */
 .pantry-main-frame {
   border: 1px solid @border;
   border-radius: 12px;
-  overflow: hidden; /* Clips children (e.g. HeaderBar) cleanly */
+  overflow: hidden;
 }
 
-/*
- * 3. ListView Container
- */
 listview {
   background: transparent;
   padding: 0px;
@@ -39,15 +30,12 @@ listview {
 listview row {
   background: transparent;
   padding: 0;
-  margin: 1px 0; /* Tight row margins */
+  margin: 1px 0;
   border: none;
   outline: none;
   box-shadow: none;
 }
 
-/*
- * 4. High-Density Compact Rows
- */
 .bookmark-row {
   padding: 6px 12px;
   border-radius: 6px;
@@ -73,29 +61,25 @@ listview row:focus-within .bookmark-row {
   box-shadow: 0 0 0 1.5px alpha(@accent, 0.4);
 }
 
-/* Refined compact row typography */
 .bookmark-row label:first-child {
-  font-size: 0.88em; /* Crisper, smaller text */
+  font-size: 0.88em;
   font-weight: 600;
   color: @text;
 }
 
 .dim-label {
-  font-size: 0.78em; /* Low-profile descriptive label */
+  font-size: 0.78em;
   color: @text_dim;
   margin-top: 2px;
   opacity: 0.7;
 }
 
-/*
- * 5. Micro Placeholder (Status Page)
- */
 .empty-placeholder-box {
   padding: 32px 16px;
 }
 
 .empty-placeholder-icon-wrapper {
-  background-color: alpha(currentColor, 0.02);
+  background-color: alpha(currentColor, 0.03);
   border: 1px solid alpha(currentColor, 0.04);
   border-radius: 9999px;
   padding: 12px;
@@ -122,35 +106,30 @@ listview row:focus-within .bookmark-row {
   line-height: 1.4;
 }
 
-/*
- * 6. High-Density Compact HeaderBar
- */
 headerbar {
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
-  border-bottom: 1px solid @border; /* Flat 1px dividing grid line */
-  min-height: 36px;
-  padding: 4px 12px;
+  border-bottom: 1px solid @border;
+  min-height: 28px;
+  padding: 3px 8px;
 }
 
-/* Exquisite metadata logotype */
 .pantry-title-label {
   font-weight: 800;
-  font-size: 1.15em; /* Smaller, ultra-crisp branding with tight kerning */
-  letter-spacing: -0.04em;
+  font-size: 1.05em;
+  letter-spacing: -0.03em;
   color: @text;
   margin-left: 4px;
   margin-right: 8px;
 }
 
-/* Pill-shaped extremely thin search input */
 headerbar .pantry-search-entry {
-  background-color: alpha(currentColor, 0.03);
+  background-color: alpha(currentColor, 0.05);
   border: 1px solid alpha(currentColor, 0.08);
   border-radius: 9999px;
   padding: 2px 8px;
-  min-width: 220px; /* Slimmer width for compact elegance */
-  min-height: 28px;
+  min-width: 220px;
+  min-height: 24px;
   font-size: 0.85em;
   box-shadow: none;
 }
@@ -165,44 +144,13 @@ headerbar button.flat {
   background: transparent;
   border: none;
   box-shadow: none;
-  padding: 4px;
-  border-radius: 9999px;
 }
 
-headerbar button.flat:hover {
-  background-color: alpha(currentColor, 0.05);
+scrolledwindow {
+  background: transparent;
+  border: none;
 }
 
-/*
- * 7. Pixel-Perfect 1px Separators
- */
-paned > separator {
-  background: @border;
-  min-width: 1px;
-  border-radius: 0;
-  margin: 0;
-  padding: 0;
-}
-
-.preview-separator {
-  background: @border;
-  min-height: 1px;
-  border-radius: 9999px;
-  margin: 8px 12px;
-}
-
-.preview-details-label {
-  color: @text_dim;
-  padding: 8px 12px; /* Tight padding */
-  font-size: 0.82em; /* Micro details text */
-}
-
-.preview-details-label b {
-  color: @text;
-  font-weight: 600;
-}
-
-/* 8. Scrollbars */
 scrollbar {
   background: transparent;
   border: none;
@@ -240,4 +188,67 @@ scrollbar slider {
 
 scrollbar:hover slider {
   background: alpha(currentColor, 0.28);
+}
+
+paned > separator {
+  background: @border;
+  min-width: 1px;
+  border-radius: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.preview-separator {
+  background: @border;
+  min-height: 1px;
+  border-radius: 9999px;
+  margin: 8px 12px;
+}
+
+.preview-details-label {
+  color: @text_dim;
+  padding: 8px 12px;
+  font-size: 0.82em;
+}
+
+.preview-details-label b {
+  color: @text;
+  font-weight: 600;
+}
+
+.aboutdialog {
+  border-radius: 12px;
+}
+
+.aboutdialog label.title {
+  font-weight: 800;
+  font-size: 1.4em;
+  letter-spacing: -0.04em;
+  color: @text;
+}
+
+.aboutdialog stackswitcher button {
+  border-radius: 6px;
+  padding: 4px 16px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: @text;
+  font-size: 0.88em;
+  font-weight: 500;
+  transition: all 120ms ease;
+}
+
+.aboutdialog stackswitcher button:checked {
+  background-color: alpha(currentColor, 0.06);
+  border-color: @border;
+  font-weight: 700;
+}
+
+.aboutdialog stackswitcher button:hover {
+  background-color: alpha(currentColor, 0.04);
+}
+
+.aboutdialog button {
+  border-radius: 6px;
+  transition: all 120ms ease;
 }
