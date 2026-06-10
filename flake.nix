@@ -1,8 +1,9 @@
 {
   description = "A generic selector for various types of entries";
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-parts.url = "github:hercules-ci/flake-parts";
+
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -10,8 +11,14 @@
   };
 
   outputs =
-    inputs@{ flake-parts, ... }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
+    {
+      nixpkgs,
+      treefmt-nix,
+      ...
+    }:
+    let
+      cargoToml = fromTOML (builtins.readFile ./Cargo.toml);
+
       systems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -19,23 +26,23 @@
         "aarch64-darwin"
       ];
 
-      imports = [
-        inputs.treefmt-nix.flakeModule
-      ];
-
-      perSystem =
-        {
-          config,
-          self',
-          inputs',
-          pkgs,
-          system,
-          ...
-        }:
+      forAllSystems =
+        f:
+        nixpkgs.lib.genAttrs systems (
+          system:
+          let
+            pkgs = import nixpkgs { inherit system; };
+            lib = pkgs.lib;
+          in
+          f {
+            inherit system pkgs lib;
+          }
+        );
+    in
+    {
+      packages = forAllSystems (
+        { pkgs, lib, ... }:
         let
-          lib = pkgs.lib;
-
-          # GTK4 and related dependencies
           buildInputs =
             with pkgs;
             [
@@ -48,7 +55,54 @@
               harfbuzz
             ]
             ++ lib.optionals pkgs.stdenv.isDarwin [
-              # macOS-specific dependencies
+              libiconv
+            ];
+
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+          ];
+
+          package = pkgs.rustPlatform.buildRustPackage {
+            pname = cargoToml.package.name;
+            version = cargoToml.package.version;
+
+            src = ./.;
+
+            cargoLock.lockFile = ./Cargo.lock;
+
+            inherit buildInputs nativeBuildInputs;
+
+            meta = {
+              description = "A generic selector for various types of entries";
+              homepage = "https://github.com/lonerOrz/pantry";
+              license = lib.licenses.mit;
+              mainProgram = cargoToml.package.name;
+              maintainers = with lib.maintainers; [ lonerOrz ];
+              platforms = systems;
+            };
+          };
+        in
+        {
+          default = package;
+          ${cargoToml.package.name} = package;
+        }
+      );
+
+      devShells = forAllSystems (
+        { pkgs, lib, ... }:
+        let
+          buildInputs =
+            with pkgs;
+            [
+              gtk4
+              glib
+              graphene
+              gdk-pixbuf
+              cairo
+              pango
+              harfbuzz
+            ]
+            ++ lib.optionals pkgs.stdenv.isDarwin [
               libiconv
             ];
 
@@ -57,34 +111,9 @@
           ];
         in
         {
-          packages = {
-            default = self'.packages.pantry;
-            pantry = pkgs.rustPlatform.buildRustPackage {
-              pname = "pantry";
-              version = "0.1.0";
-              src = ./.;
-              cargoLock = {
-                lockFile = ./Cargo.lock;
-              };
-              inherit buildInputs nativeBuildInputs;
-              meta = with lib; {
-                description = "A generic selector for various types of entries";
-                homepage = "https://github.com/lonerOrz/pantry";
-                license = licenses.mit;
-                mainProgram = "pantry";
-                maintainers = with lib.maintainers; [ lonerOrz ];
-                platforms = [
-                  "x86_64-linux"
-                  "aarch64-linux"
-                  "x86_64-darwin"
-                  "aarch64-darwin"
-                ];
-              };
-            };
-          };
-
-          devShells.default = pkgs.mkShell {
+          default = pkgs.mkShell {
             inherit buildInputs nativeBuildInputs;
+
             packages = with pkgs; [
               rustc
               cargo
@@ -93,22 +122,25 @@
               clippy
             ];
 
-            env = {
-              LD_LIBRARY_PATH = lib.optionalString (
-                !pkgs.stdenv.isDarwin
-              ) "${pkgs.lib.makeLibraryPath buildInputs}";
-              DYLD_LIBRARY_PATH = lib.optionalString pkgs.stdenv.isDarwin "${pkgs.lib.makeLibraryPath buildInputs}";
-            };
+            LD_LIBRARY_PATH = lib.optionalString (!pkgs.stdenv.isDarwin) (lib.makeLibraryPath buildInputs);
+
+            DYLD_LIBRARY_PATH = lib.optionalString pkgs.stdenv.isDarwin (lib.makeLibraryPath buildInputs);
+          };
+        }
+      );
+
+      formatter = forAllSystems (
+        { pkgs, ... }:
+        treefmt-nix.lib.mkWrapper pkgs {
+          projectRootFile = "flake.nix";
+
+          programs.nixfmt = {
+            enable = true;
+            package = pkgs.nixfmt-rfc-style;
           };
 
-          treefmt = {
-            projectRootFile = "flake.nix";
-            programs.nixfmt = {
-              enable = true;
-              package = pkgs.nixfmt-rfc-style;
-            };
-            programs.rustfmt.enable = true;
-          };
-        };
+          programs.rustfmt.enable = true;
+        }
+      );
     };
 }
