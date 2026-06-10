@@ -35,10 +35,10 @@ impl ListState {
 
         let factory = build_factory(query_state.clone());
         let view = ListView::new(Some(selection.clone()), Some(factory));
-        view.set_margin_top(20);
-        view.set_margin_bottom(20);
-        view.set_margin_start(20);
-        view.set_margin_end(20);
+        view.set_margin_top(8);
+        view.set_margin_bottom(8);
+        view.set_margin_start(8);
+        view.set_margin_end(8);
         view.add_css_class("pantry-list-view");
 
         Self {
@@ -73,8 +73,9 @@ impl ListState {
         if self.sort_model.n_items() == 0 {
             self.selection.set_selected(gtk4::INVALID_LIST_POSITION);
         } else {
+            // Simply select the first index without stealing the keyboard focus
+            // from the active search box.
             self.selection.set_selected(0);
-            self.view.grab_focus();
         }
     }
 
@@ -234,32 +235,29 @@ fn highlight_title(title: &str, query: &str) -> String {
     let title_lower = title.to_lowercase();
     let query_lower = query.to_lowercase();
 
+    if let Some(start) = title_lower.find(&query_lower) {
+        let end = start + query.len();
+        let before = &title[..start];
+        let matched = &title[start..end];
+        let after = &title[end..];
+        return format!(
+            "{}<span foreground='#3584e4' weight='bold'>{}</span>{}",
+            glib::markup_escape_text(before),
+            glib::markup_escape_text(matched),
+            glib::markup_escape_text(after),
+        );
+    }
+
     if !fuzzy_match(&title_lower, &query_lower) {
         return glib::markup_escape_text(title).to_string();
     }
 
-    if let Some(start_byte) = title_lower.find(&query_lower) {
-        let char_start = title_lower[..start_byte].chars().count();
-        let char_len = query_lower.chars().count();
-
-        let before: String = title.chars().take(char_start).collect();
-        let matched: String = title.chars().skip(char_start).take(char_len).collect();
-        let after: String = title.chars().skip(char_start + char_len).collect();
-
-        return format!(
-            "{}<span foreground='#3584e4' weight='bold'>{}</span>{}",
-            glib::markup_escape_text(&before),
-            glib::markup_escape_text(&matched),
-            glib::markup_escape_text(&after),
-        );
-    }
-
     let mut result = String::new();
     let mut qi = 0;
-    let query_chars: Vec<char> = query_lower.chars().collect();
+    let chars: Vec<char> = query_lower.chars().collect();
 
     for c in title.chars() {
-        if qi < query_chars.len() && c.to_lowercase().next() == Some(query_chars[qi]) {
+        if qi < chars.len() && c.to_lowercase().next() == Some(chars[qi]) {
             result.push_str(&format!(
                 "<span foreground='#3584e4' weight='bold'>{}</span>",
                 glib::markup_escape_text(&c.to_string())

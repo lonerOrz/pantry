@@ -2,13 +2,12 @@ use clap::Parser;
 use gtk4::{Application, gio, prelude::*};
 use std::cell::RefCell;
 use std::path::PathBuf;
-use std::process::Command;
 use std::rc::Rc;
 
 use crate::app::{event_handlers::EventHandler, ui_builder::UiBuilder};
-use crate::config::{Category, Config, DisplayMode, SourceMode};
+use crate::config::{Config, DisplayMode, SourceMode};
 use crate::domain::item::Item;
-use crate::ui::{list::ListState, preview};
+use crate::ui::list::ListState;
 use crate::window_state::WindowState;
 
 #[derive(Debug, Parser)]
@@ -17,15 +16,12 @@ use crate::window_state::WindowState;
     about = "A generic selector for various types of entries"
 )]
 pub struct Args {
-    /// Configuration file path [default: ~/.config/pantry/config.toml]
     #[arg(short = 'f', long, default_value_t = crate::app::application::get_default_config_path())]
     pub config: String,
 
-    /// Specify the category to load (load all categories if not specified)
     #[arg(short = 'c', long = "category")]
     pub category: Option<String>,
 
-    /// Display mode: text or picture
     #[arg(short = 'd', long = "display")]
     pub display: Option<String>,
 }
@@ -71,7 +67,7 @@ impl PantryApp {
             InputMode::Stdin => {
                 let search_query: crate::ui::search::SearchState =
                     Rc::new(RefCell::new(String::new()));
-                let (window, list_state, preview_area_rc_opt, search_label) =
+                let (window, list_state, preview_area_rc_opt, search_entry) =
                     UiBuilder::build_stdin_ui(
                         &self.args,
                         &self.window_state,
@@ -82,18 +78,17 @@ impl PantryApp {
                 EventHandler::setup_keyboard_controller(
                     &window,
                     &list_state,
-                    search_query,
-                    search_label,
-                    &self.args,
+                    &search_entry,
                     preview_area_rc_opt.clone(),
                 );
 
                 window.present();
+                search_entry.grab_focus();
             }
             InputMode::Config => {
                 let search_query: crate::ui::search::SearchState =
                     Rc::new(RefCell::new(String::new()));
-                let (window, list_state, preview_area_rc_opt, search_label) =
+                let (window, list_state, preview_area_rc_opt, search_entry) =
                     UiBuilder::build_config_ui(
                         &self.args,
                         &self.window_state,
@@ -104,9 +99,7 @@ impl PantryApp {
                 EventHandler::setup_keyboard_controller(
                     &window,
                     &list_state,
-                    search_query,
-                    search_label,
-                    &self.args,
+                    &search_entry,
                     preview_area_rc_opt.clone(),
                 );
 
@@ -119,6 +112,7 @@ impl PantryApp {
                 );
 
                 window.present();
+                search_entry.grab_focus();
             }
         }
     }
@@ -129,7 +123,9 @@ impl PantryApp {
         config_path: &str,
         category_filter: &Option<String>,
         display_arg: &Option<String>,
-        preview_area_rc_opt: Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>,
+        preview_area_rc_opt: Option<
+            std::rc::Rc<std::cell::RefCell<crate::ui::preview::PreviewArea>>,
+        >,
     ) {
         let config_path = config_path.to_string();
         let category_filter = category_filter.clone();
@@ -231,10 +227,9 @@ fn load_items_from_config_sync(
     ))
 }
 
-/// Load items from a single category
 fn load_items_from_category(
     category_name: &str,
-    category_config: &Category,
+    category_config: &crate::config::Category,
     effective_display: DisplayMode,
     effective_source: SourceMode,
     items: &mut Vec<Item>,
@@ -305,7 +300,10 @@ pub fn get_default_config_path() -> String {
 }
 
 fn execute_command(command: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let output = Command::new("sh").arg("-c").arg(command).output()?;
+    let output = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .output()?;
 
     if output.status.success() {
         Ok(String::from_utf8(output.stdout)?)
