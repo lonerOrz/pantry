@@ -87,6 +87,11 @@ impl ItemBuilder {
 pub struct ItemProcessor;
 
 impl ItemProcessor {
+    const MEDIA_EXTENSIONS: &[&str] = &[
+        "png", "jpeg", "jpg", "gif", "webp", "bmp", "tiff", "tif", "mp4", "webm", "mkv", "avi",
+        "mov", "wmv", "flv", "m4v",
+    ];
+
     /// Process item for display (expand directories, etc.)
     pub fn process_for_display(item: &Item) -> Vec<Item> {
         if matches!(item.display, DisplayMode::Picture) {
@@ -97,12 +102,21 @@ impl ItemProcessor {
                 use walkdir::WalkDir;
                 let mut paths = Vec::new();
                 for entry in WalkDir::new(&expanded_path_str)
+                    .max_depth(3)
                     .follow_links(true)
                     .into_iter()
                     .flatten()
                 {
                     let path = entry.path();
-                    if path.is_file() {
+                    if path.is_file()
+                        && path
+                            .extension()
+                            .and_then(|s| s.to_str())
+                            .map(|ext| {
+                                Self::MEDIA_EXTENSIONS.contains(&ext.to_lowercase().as_str())
+                            })
+                            .unwrap_or(false)
+                    {
                         let path_str = path.to_string_lossy();
                         paths.push(Item {
                             title: format!(
@@ -139,10 +153,36 @@ impl ItemProcessor {
         list_command: &str,
         preview_template: &str,
     ) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
-        let output = std::process::Command::new("sh")
+        let child = std::process::Command::new("sh")
             .arg("-c")
             .arg(list_command)
-            .output()?;
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn dynamic source command: {}", e))?;
+
+        let pid = child.id();
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        std::thread::spawn(move || {
+            let result = child.wait_with_output();
+            let _ = tx.send(result);
+        });
+
+        let output = match rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok(Ok(output)) => output,
+            Ok(Err(e)) => {
+                return Err(format!("Dynamic source command failed: {}", e).into());
+            }
+            Err(_) => {
+                let _ = std::process::Command::new("kill")
+                    .arg("-9")
+                    .arg(pid.to_string())
+                    .output();
+                return Err("Dynamic source command timed out after 30 seconds".into());
+            }
+        };
 
         if !output.status.success() {
             return Err(format!(

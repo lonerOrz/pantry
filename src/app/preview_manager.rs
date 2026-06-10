@@ -4,7 +4,6 @@ use gtk4::{gio, glib};
 use std::cell::RefCell;
 use std::process::Command;
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct PreviewManager;
 
@@ -13,31 +12,6 @@ impl PreviewManager {
         list_state: &ListState,
         preview_area_rc_opt: &Option<Rc<RefCell<crate::ui::preview::PreviewArea>>>,
     ) {
-        use std::sync::OnceLock;
-        use std::sync::atomic::{AtomicU64, Ordering};
-
-        static LAST_UPDATE_TIME: OnceLock<AtomicU64> = OnceLock::new();
-        let last_update = LAST_UPDATE_TIME.get_or_init(|| AtomicU64::new(0));
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-
-        let prev_time = last_update.load(Ordering::Relaxed);
-        if prev_time != 0
-            && now.saturating_sub(prev_time) < crate::constants::PREVIEW_UPDATE_THROTTLE_MS
-        {
-            return;
-        }
-
-        if last_update
-            .compare_exchange(prev_time, now, Ordering::Relaxed, Ordering::Relaxed)
-            .is_err()
-        {
-            return;
-        }
-
         let Some(preview_area_rc) = preview_area_rc_opt else {
             return;
         };

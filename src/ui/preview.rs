@@ -283,13 +283,33 @@ impl PreviewArea {
             let row_start = y * rowstride;
             for x in 0..width as usize {
                 let pixel_start = row_start + x * n_channels;
-                // Copy RGB channels
-                rgba_data.extend_from_slice(&pixels[pixel_start..pixel_start + 3]);
-                // Add alpha channel
-                if has_alpha && n_channels >= 4 {
-                    rgba_data.push(pixels[pixel_start + 3]);
-                } else {
-                    rgba_data.push(255); // Full alpha
+
+                if pixel_start + n_channels > pixels.len() {
+                    break;
+                }
+
+                match n_channels {
+                    1 => {
+                        // Grayscale: R=G=B=gray
+                        let v = pixels[pixel_start];
+                        rgba_data.extend_from_slice(&[v, v, v, 255]);
+                    }
+                    2 => {
+                        // Grayscale + Alpha
+                        let v = pixels[pixel_start];
+                        let a = pixels[pixel_start + 1];
+                        rgba_data.extend_from_slice(&[v, v, v, a]);
+                    }
+                    _ => {
+                        // RGB or RGBA
+                        rgba_data.extend_from_slice(&pixels[pixel_start..pixel_start + 3]);
+                        let a = if has_alpha && n_channels >= 4 {
+                            pixels[pixel_start + 3]
+                        } else {
+                            255
+                        };
+                        rgba_data.push(a);
+                    }
                 }
             }
         }
@@ -333,8 +353,17 @@ impl PreviewArea {
 
         eprintln!("[CACHE] Dimensions: {}x{}", width, height);
 
-        let expected_size = (width * height * 4) as usize;
-        let mut raw_data = Vec::with_capacity(expected_size);
+        // Validate dimensions: prevent OOM from corrupted cache files
+        let expected_size = (width as u64) * (height as u64) * 4;
+        if width == 0 || height == 0 || expected_size > 100 * 1024 * 1024 {
+            eprintln!(
+                "[CACHE] Warning: Invalid or oversized cache metadata: {}x{} ({} bytes)",
+                width, height, expected_size
+            );
+            return None;
+        }
+
+        let mut raw_data = Vec::with_capacity(expected_size as usize);
         file.read_to_end(&mut raw_data).ok()?;
 
         let elapsed = start.elapsed();
@@ -345,7 +374,7 @@ impl PreviewArea {
             expected_size
         );
 
-        if raw_data.len() == expected_size {
+        if raw_data.len() == expected_size as usize {
             Some((raw_data, width, height))
         } else {
             eprintln!("[CACHE] Size mismatch! Corrupted file");

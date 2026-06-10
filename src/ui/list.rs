@@ -2,29 +2,38 @@ use crate::app::item_object::ItemObject;
 use crate::domain::item::Item;
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, CustomFilter, FilterChange, FilterListModel, Label, ListItem, ListView,
-    Orientation, SignalListItemFactory, SingleSelection, gio,
+    Box as GtkBox, CustomFilter, CustomSorter, FilterChange, FilterListModel, Label, ListItem,
+    ListView, Orientation, SignalListItemFactory, SingleSelection, SortListModel, SorterChange,
+    gio,
 };
+use std::cmp::Ordering;
+
+use crate::ui::search::SearchState;
 
 #[derive(Clone)]
 pub struct ListState {
     pub store: gio::ListStore,
     pub filter: CustomFilter,
-    pub filter_model: FilterListModel,
+    pub sort_model: SortListModel,
     pub selection: SingleSelection,
     pub view: ListView,
+    sorter: CustomSorter,
+    #[allow(dead_code)]
+    filter_model: FilterListModel,
 }
 
 impl ListState {
-    pub fn new(query_state: crate::ui::search::SearchState) -> Self {
+    pub fn new(query_state: SearchState) -> Self {
         let store = gio::ListStore::new::<ItemObject>();
-        let filter = build_filter(query_state);
+        let filter = build_filter(query_state.clone());
         let filter_model = FilterListModel::new(Some(store.clone()), Some(filter.clone()));
-        let selection = SingleSelection::new(Some(filter_model.clone()));
+        let sorter = build_sorter(query_state.clone());
+        let sort_model = SortListModel::new(Some(filter_model.clone()), Some(sorter.clone()));
+        let selection = SingleSelection::new(Some(sort_model.clone()));
         selection.set_autoselect(false);
         selection.set_can_unselect(true);
 
-        let factory = build_factory();
+        let factory = build_factory(query_state.clone());
         let view = ListView::new(Some(selection.clone()), Some(factory));
         view.set_margin_top(20);
         view.set_margin_bottom(20);
@@ -36,6 +45,8 @@ impl ListState {
             store,
             filter,
             filter_model,
+            sort_model,
+            sorter,
             selection,
             view,
         }
@@ -59,7 +70,7 @@ impl ListState {
     }
 
     pub fn select_first(&self) {
-        if self.filter_model.n_items() == 0 {
+        if self.sort_model.n_items() == 0 {
             self.selection.set_selected(gtk4::INVALID_LIST_POSITION);
         } else {
             self.selection.set_selected(0);
@@ -69,10 +80,11 @@ impl ListState {
 
     pub fn refresh_filter(&self) {
         self.filter.changed(FilterChange::Different);
+        self.sorter.changed(SorterChange::Different);
     }
 }
 
-fn build_filter(query_state: crate::ui::search::SearchState) -> CustomFilter {
+fn build_filter(query_state: SearchState) -> CustomFilter {
     CustomFilter::new(move |obj| {
         let query = query_state.borrow();
         if query.is_empty() {
@@ -89,7 +101,44 @@ fn build_filter(query_state: crate::ui::search::SearchState) -> CustomFilter {
     })
 }
 
-fn build_factory() -> SignalListItemFactory {
+fn build_sorter(query_state: SearchState) -> CustomSorter {
+    CustomSorter::new(move |obj1, obj2| {
+        let query = query_state.borrow();
+        if query.is_empty() {
+            return Ordering::Equal.into();
+        }
+
+        let item1 = obj1.downcast_ref::<ItemObject>();
+        let item2 = obj2.downcast_ref::<ItemObject>();
+
+        let score1 = item1.and_then(|i| relevance_score(i, &query)).unwrap_or(0);
+        let score2 = item2.and_then(|i| relevance_score(i, &query)).unwrap_or(0);
+
+        score2.cmp(&score1).into()
+    })
+}
+
+fn relevance_score(item: &ItemObject, query: &str) -> Option<i32> {
+    let query_lower = query.to_lowercase();
+    let title_lower = item.title().to_lowercase();
+    let value_lower = item.value().to_lowercase();
+
+    if title_lower == query_lower {
+        Some(100)
+    } else if title_lower.starts_with(&query_lower) {
+        Some(60)
+    } else if title_lower.contains(&query_lower) {
+        Some(30)
+    } else if value_lower.contains(&query_lower) {
+        Some(20)
+    } else if fuzzy_match(&title_lower, &query_lower) {
+        Some(10)
+    } else {
+        None
+    }
+}
+
+fn build_factory(query_state: SearchState) -> SignalListItemFactory {
     let factory = SignalListItemFactory::new();
 
     factory.connect_setup(|_, obj| {
@@ -116,7 +165,7 @@ fn build_factory() -> SignalListItemFactory {
         list_item.set_child(Some(&row));
     });
 
-    factory.connect_bind(|_, obj| {
+    factory.connect_bind(move |_, obj| {
         let list_item = obj
             .downcast_ref::<ListItem>()
             .expect("factory bind object must be a ListItem");
@@ -133,7 +182,12 @@ fn build_factory() -> SignalListItemFactory {
             return;
         };
 
-        title_label.set_label(&glib::markup_escape_text(&item_object.title()));
+        let query = query_state.borrow();
+        if query.is_empty() {
+            title_label.set_markup(&glib::markup_escape_text(&item_object.title()));
+        } else {
+            title_label.set_markup(&highlight_title(&item_object.title(), &query));
+        }
         value_label.set_label(&item_object.value());
     });
 
@@ -174,4 +228,46 @@ fn fuzzy_match(text: &str, pattern: &str) -> bool {
     }
 
     false
+}
+
+fn highlight_title(title: &str, query: &str) -> String {
+    let title_lower = title.to_lowercase();
+    let query_lower = query.to_lowercase();
+
+    if !fuzzy_match(&title_lower, &query_lower) {
+        return glib::markup_escape_text(title).to_string();
+    }
+
+    if let Some(start_byte) = title_lower.find(&query_lower) {
+        let char_start = title_lower[..start_byte].chars().count();
+        let char_len = query_lower.chars().count();
+
+        let before: String = title.chars().take(char_start).collect();
+        let matched: String = title.chars().skip(char_start).take(char_len).collect();
+        let after: String = title.chars().skip(char_start + char_len).collect();
+
+        return format!(
+            "{}<span foreground='#3584e4' weight='bold'>{}</span>{}",
+            glib::markup_escape_text(&before),
+            glib::markup_escape_text(&matched),
+            glib::markup_escape_text(&after),
+        );
+    }
+
+    let mut result = String::new();
+    let mut qi = 0;
+    let query_chars: Vec<char> = query_lower.chars().collect();
+
+    for c in title.chars() {
+        if qi < query_chars.len() && c.to_lowercase().next() == Some(query_chars[qi]) {
+            result.push_str(&format!(
+                "<span foreground='#3584e4' weight='bold'>{}</span>",
+                glib::markup_escape_text(&c.to_string())
+            ));
+            qi += 1;
+        } else {
+            result.push_str(&glib::markup_escape_text(&c.to_string()));
+        }
+    }
+    result
 }
