@@ -7,3 +7,7 @@ pub const IMAGE_PREVIEW_HEIGHT: i32 = 600;
 pub const MAX_WINDOW_WIDTH_FRACTION: f64 = 0.45;
 pub const DEFAULT_WINDOW_WIDTH: i32 = 1200;
 pub const DEFAULT_WINDOW_HEIGHT: i32 = 800;
+pub const MAX_DECODE_PIXEL_BYTES: u64 = 50 * 1024 * 1024;
+pub const MAX_ITEMS: usize = 10_000;
+pub const CACHE_MAX_SIZE_BYTES: u64 = 1024 * 1024 * 1024;
+pub const DYNAMIC_OUTPUT_MAX_BYTES: usize = 10 * 1024 * 1024;

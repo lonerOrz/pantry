@@ -295,6 +295,14 @@ fn load_gif_first_frame(
     max_width: i32,
     max_height: i32,
 ) -> Option<(Vec<u8>, i32, i32)> {
+    let reader = ImageReader::open(path).ok()?.with_guessed_format().ok()?;
+
+    let (orig_w, orig_h) = reader.into_dimensions().ok()?;
+    let pixel_bytes = orig_w as u64 * orig_h as u64 * 4;
+    if pixel_bytes > crate::constants::MAX_DECODE_PIXEL_BYTES {
+        return None;
+    }
+
     let img = ImageReader::open(path)
         .ok()?
         .with_guessed_format()
