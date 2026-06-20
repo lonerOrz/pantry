@@ -1,6 +1,6 @@
 use gtk4::{
-    AboutDialog, Align, Application, ApplicationWindow, Box as GtkBox, Button, HeaderBar, Label,
-    Orientation, ScrolledWindow, SearchEntry, prelude::*,
+    Application, ApplicationWindow, Box as GtkBox, Orientation, ScrolledWindow, SearchEntry,
+    prelude::*,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -8,7 +8,7 @@ use std::rc::Rc;
 use crate::constants::MAX_ITEMS;
 use crate::domain::item::Item;
 use crate::domain::{DisplayMode, SourceMode};
-use crate::ui::{list::ListState, preview, window};
+use crate::ui::{header, list::ListState, preview, window};
 use crate::window_state::WindowState;
 
 pub struct UiBuilder;
@@ -32,40 +32,8 @@ impl UiBuilder {
         let (main_widget, preview_area_rc_opt) =
             build_main_widget(&list_state, display_mode.clone());
 
-        let header_bar = HeaderBar::new();
-        header_bar.set_show_title_buttons(true);
-
-        let title_label = Label::new(Some("pantry"));
-        title_label.add_css_class("pantry-title-label");
-        header_bar.pack_start(&title_label);
-
-        let search_entry = SearchEntry::new();
-        search_entry.add_css_class("pantry-search-entry");
-        header_bar.set_title_widget(Some(&search_entry));
-
-        let menu_button = Button::from_icon_name("open-menu-symbolic");
-        menu_button.add_css_class("flat");
-        header_bar.pack_end(&menu_button);
-
-        let window_clone = window.clone();
-        menu_button.connect_clicked(move |_| {
-            let about = AboutDialog::new();
-            about.set_transient_for(Some(&window_clone));
-            about.set_modal(true);
-            about.set_program_name(Some("pantry"));
-            about.set_version(Some(env!("CARGO_PKG_VERSION")));
-            about.set_copyright(Some("© 2025, lonerorz"));
-            about.set_comments(Some(
-                "A generic selector tool with text and image preview modes",
-            ));
-            about.set_website(Some("https://github.com/lonerOrz/pantry"));
-            about.set_website_label("GitHub Repository");
-            about.set_license(Some(include_str!("../../LICENSE")));
-            about.set_authors(&["lonerorz <2788892716@qq.com>"]);
-            about.set_artists(&["lonerorz"]);
-            about.set_logo_icon_name(Some("system-search-symbolic"));
-            about.present();
-        });
+        let (header_bar, search_entry, menu_button) = header::build_header_bar();
+        header::connect_about_dialog(&window, &menu_button);
 
         let frame_wrapper = GtkBox::new(Orientation::Vertical, 0);
         frame_wrapper.add_css_class("pantry-main-frame");
@@ -76,23 +44,12 @@ impl UiBuilder {
 
         search_entry.set_key_capture_widget(Some(&window));
 
-        let list_state_clone = list_state.clone();
-        let query_state_clone = query_state.clone();
-        let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
-
-        search_entry.connect_search_changed(move |entry| {
-            {
-                let mut query = query_state_clone.borrow_mut();
-                query.clear();
-                query.push_str(&entry.text());
-            }
-            list_state_clone.refresh_filter();
-            list_state_clone.select_first();
-            crate::app::preview_manager::PreviewManager::update_preview(
-                &list_state_clone,
-                &preview_area_rc_opt_clone,
-            );
-        });
+        header::connect_search_changed(
+            &search_entry,
+            &list_state,
+            &query_state,
+            &preview_area_rc_opt,
+        );
 
         let (tx, rx) = std::sync::mpsc::channel::<String>();
 
@@ -168,40 +125,8 @@ impl UiBuilder {
         let (main_widget, preview_area_rc_opt) =
             build_main_widget(&list_state, display_mode.clone());
 
-        let header_bar = HeaderBar::new();
-        header_bar.set_show_title_buttons(true);
-
-        let title_label = Label::new(Some("pantry"));
-        title_label.add_css_class("pantry-title-label");
-        header_bar.pack_start(&title_label);
-
-        let search_entry = SearchEntry::new();
-        search_entry.add_css_class("pantry-search-entry");
-        header_bar.set_title_widget(Some(&search_entry));
-
-        let menu_button = Button::from_icon_name("open-menu-symbolic");
-        menu_button.add_css_class("flat");
-        header_bar.pack_end(&menu_button);
-
-        let window_clone = window.clone();
-        menu_button.connect_clicked(move |_| {
-            let about = AboutDialog::new();
-            about.set_transient_for(Some(&window_clone));
-            about.set_modal(true);
-            about.set_program_name(Some("pantry"));
-            about.set_version(Some(env!("CARGO_PKG_VERSION")));
-            about.set_copyright(Some("© 2025, lonerorz"));
-            about.set_comments(Some(
-                "A generic selector tool with text and image preview modes",
-            ));
-            about.set_website(Some("https://github.com/lonerOrz/pantry"));
-            about.set_website_label("GitHub Repository");
-            about.set_license(Some(include_str!("../../LICENSE")));
-            about.set_authors(&["lonerorz <2788892716@qq.com>"]);
-            about.set_artists(&["lonerorz"]);
-            about.set_logo_icon_name(Some("system-search-symbolic"));
-            about.present();
-        });
+        let (header_bar, search_entry, menu_button) = header::build_header_bar();
+        header::connect_about_dialog(&window, &menu_button);
 
         let frame_wrapper = GtkBox::new(Orientation::Vertical, 0);
         frame_wrapper.add_css_class("pantry-main-frame");
@@ -214,23 +139,12 @@ impl UiBuilder {
 
         list_state.view.grab_focus();
 
-        let list_state_clone = list_state.clone();
-        let query_state_clone = query_state.clone();
-        let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
-
-        search_entry.connect_search_changed(move |entry| {
-            {
-                let mut query = query_state_clone.borrow_mut();
-                query.clear();
-                query.push_str(&entry.text());
-            }
-            list_state_clone.refresh_filter();
-            list_state_clone.select_first();
-            crate::app::preview_manager::PreviewManager::update_preview(
-                &list_state_clone,
-                &preview_area_rc_opt_clone,
-            );
-        });
+        header::connect_search_changed(
+            &search_entry,
+            &list_state,
+            &query_state,
+            &preview_area_rc_opt,
+        );
 
         setup_preview_updates(
             &window,
@@ -257,23 +171,24 @@ fn build_main_widget(
     list_stack.add_titled(&content_widget, Some("content"), "Content");
 
     let empty_box = GtkBox::new(Orientation::Vertical, 0);
-    empty_box.set_valign(Align::Center);
-    empty_box.set_halign(Align::Center);
+    empty_box.set_valign(gtk4::Align::Center);
+    empty_box.set_halign(gtk4::Align::Center);
     empty_box.add_css_class("empty-placeholder-box");
 
     let icon_wrapper = GtkBox::new(Orientation::Vertical, 0);
     icon_wrapper.add_css_class("empty-placeholder-icon-wrapper");
-    icon_wrapper.set_halign(Align::Center);
-    icon_wrapper.set_valign(Align::Center);
+    icon_wrapper.set_halign(gtk4::Align::Center);
+    icon_wrapper.set_valign(gtk4::Align::Center);
 
     let empty_icon = gtk4::Image::from_icon_name("system-search-symbolic");
     empty_icon.set_pixel_size(36);
     icon_wrapper.append(&empty_icon);
 
-    let empty_label = Label::new(Some("No Matching Results"));
+    let empty_label = gtk4::Label::new(Some("No Matching Results"));
     empty_label.add_css_class("empty-placeholder-text");
 
-    let empty_sub_label = Label::new(Some("Try entering different terms or check your spelling."));
+    let empty_sub_label =
+        gtk4::Label::new(Some("Try entering different terms or check your spelling."));
     empty_sub_label.add_css_class("empty-placeholder-subtitle");
 
     empty_box.append(&icon_wrapper);
