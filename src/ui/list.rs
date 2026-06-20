@@ -1,5 +1,5 @@
-use crate::app::item_object::ItemObject;
 use crate::domain::item::Item;
+use crate::ui::item_object::ItemObject;
 use gtk4::prelude::*;
 use gtk4::{
     Box as GtkBox, CustomFilter, CustomSorter, FilterChange, FilterListModel, Label, ListItem,
