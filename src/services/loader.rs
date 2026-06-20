@@ -1,4 +1,5 @@
 use crate::config::{Category, Config, DisplayMode, SourceMode};
+use crate::constants::MAX_ITEMS;
 use crate::domain::item::Item;
 use std::path::PathBuf;
 
@@ -64,6 +65,10 @@ fn collect_items(
         );
     }
 
+    if items.len() > MAX_ITEMS {
+        items.truncate(MAX_ITEMS);
+    }
+
     items
 }
 
@@ -90,6 +95,9 @@ fn load_category_items(
     match effective_source {
         SourceMode::Config => {
             for (key, value) in &category_config.entries {
+                if items.len() >= MAX_ITEMS {
+                    return;
+                }
                 items.push(Item {
                     title: key.clone(),
                     value: value.clone(),
@@ -106,6 +114,9 @@ fn load_category_items(
                     let lines: Vec<&str> = output.lines().collect();
                     for (idx, line) in lines.iter().enumerate() {
                         if !line.trim().is_empty() {
+                            if items.len() >= MAX_ITEMS {
+                                return;
+                            }
                             let title = if lines.len() == 1 {
                                 key.clone()
                             } else {

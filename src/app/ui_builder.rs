@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use crate::app::application::Args;
 use crate::config::{DisplayMode, SourceMode, get_config_display_mode, resolve_display_mode};
+use crate::constants::MAX_ITEMS;
 use crate::domain::item::Item;
 use crate::ui::{list::ListState, preview, window};
 use crate::window_state::WindowState;
@@ -110,6 +111,7 @@ impl UiBuilder {
 
         let list_state_clone = list_state.clone();
         let display_mode_clone = display_mode.clone();
+        let mut stdin_count: usize = 0;
 
         glib::idle_add_local(move || {
             while let Ok(line) = rx.try_recv() {
@@ -121,6 +123,11 @@ impl UiBuilder {
                     source: SourceMode::Config,
                     preview_template: None,
                 });
+
+                stdin_count += 1;
+                if stdin_count >= MAX_ITEMS {
+                    return glib::ControlFlow::Break;
+                }
 
                 if list_state_clone.selection.selected() == gtk4::INVALID_LIST_POSITION {
                     list_state_clone.select_first();

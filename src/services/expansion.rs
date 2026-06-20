@@ -1,4 +1,5 @@
 use crate::config::{DisplayMode, SourceMode};
+use crate::constants::MAX_ITEMS;
 use crate::domain::item::Item;
 
 pub struct ItemProcessor;
@@ -49,6 +50,7 @@ impl ItemProcessor {
                         });
                     }
                 }
+                paths.truncate(MAX_ITEMS);
                 paths
             } else {
                 vec![Item {
@@ -139,6 +141,10 @@ impl ItemProcessor {
                 source: SourceMode::Dynamic,
                 preview_template: template.clone(),
             });
+
+            if items.len() >= MAX_ITEMS {
+                break;
+            }
         }
 
         Ok(items)
