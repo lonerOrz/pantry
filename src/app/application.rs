@@ -1,12 +1,9 @@
 use clap::Parser;
 use gtk4::{Application, gio, prelude::*};
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::app::{event_handlers::EventHandler, ui_builder::UiBuilder};
-use crate::config::{Config, DisplayMode, SourceMode};
-use crate::domain::item::Item;
 use crate::ui::list::ListState;
 use crate::window_state::WindowState;
 
@@ -16,7 +13,7 @@ use crate::window_state::WindowState;
     about = "A generic selector for various types of entries"
 )]
 pub struct Args {
-    #[arg(short = 'f', long, default_value_t = crate::app::application::get_default_config_path())]
+    #[arg(short = 'f', long, default_value_t = crate::services::loader::get_default_config_path())]
     pub config: String,
 
     #[arg(short = 'c', long = "category")]
@@ -135,7 +132,7 @@ impl PantryApp {
 
         glib::spawn_future_local(async move {
             let load_result = gio::spawn_blocking(move || {
-                load_items_from_config_sync(&config_path, &category_filter, &display_arg)
+                crate::services::loader::load_items(&config_path, &category_filter, &display_arg)
             })
             .await;
 
@@ -179,137 +176,6 @@ impl PantryApp {
                 },
             );
         });
-    }
-}
-
-fn load_items_from_config_sync(
-    config_path: &str,
-    category_filter: &Option<String>,
-    display_arg: &Option<String>,
-) -> Result<Vec<Item>, String> {
-    let content = std::fs::read_to_string(config_path)
-        .map_err(|e| format!("Failed to read config file {}: {}", config_path, e))?;
-
-    let config: Config = toml::from_str(&content)
-        .map_err(|e| format!("Failed to parse config file {}: {}", config_path, e))?;
-
-    let mut items = Vec::new();
-
-    for (category_name, category_config) in config.categories.iter().filter(|(name, cat_cfg)| {
-        if let Some(filter) = category_filter {
-            *name == filter
-        } else {
-            display_arg.is_some()
-                || cat_cfg.display.as_ref().unwrap_or(&config.display) == &config.display
-        }
-    }) {
-        let effective_display = crate::config::resolve_display_mode(
-            display_arg,
-            &category_config.display,
-            &config.display,
-        );
-        let effective_source = category_config
-            .source
-            .clone()
-            .unwrap_or(config.source.clone());
-
-        load_items_from_category(
-            category_name,
-            category_config,
-            effective_display,
-            effective_source,
-            &mut items,
-        );
-    }
-
-    Ok(crate::services::ItemService::process_items_for_display(
-        items,
-    ))
-}
-
-fn load_items_from_category(
-    category_name: &str,
-    category_config: &crate::config::Category,
-    effective_display: DisplayMode,
-    effective_source: SourceMode,
-    items: &mut Vec<Item>,
-) {
-    match effective_source {
-        SourceMode::Config => {
-            for (key, value) in &category_config.entries {
-                items.push(Item {
-                    title: key.clone(),
-                    value: value.clone(),
-                    category: category_name.to_string(),
-                    display: effective_display.clone(),
-                    source: effective_source.clone(),
-                    preview_template: None,
-                });
-            }
-        }
-        SourceMode::Command => {
-            for (key, cmd) in &category_config.entries {
-                if let Ok(output) = execute_command(cmd) {
-                    let lines: Vec<&str> = output.lines().collect();
-                    for (idx, line) in lines.iter().enumerate() {
-                        if !line.trim().is_empty() {
-                            let title = if lines.len() == 1 {
-                                key.clone()
-                            } else {
-                                format!("{} [{}]", key, idx + 1)
-                            };
-
-                            items.push(Item {
-                                title,
-                                value: line.trim().to_string(),
-                                category: category_name.to_string(),
-                                display: effective_display.clone(),
-                                source: effective_source.clone(),
-                                preview_template: None,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-        SourceMode::Dynamic => {
-            for (list_cmd, preview_template) in &category_config.entries {
-                if let Ok(dynamic_items) =
-                    crate::services::expansion::ItemProcessor::process_dynamic_source(
-                        list_cmd,
-                        preview_template,
-                    )
-                {
-                    items.extend(dynamic_items);
-                }
-            }
-        }
-    }
-}
-
-pub fn get_default_config_path() -> String {
-    let config_dir = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("pantry");
-
-    if let Err(e) = std::fs::create_dir_all(&config_dir) {
-        eprintln!("Warning: Failed to create config directory: {}", e);
-    }
-
-    config_dir.join("config.toml").to_string_lossy().to_string()
-}
-
-fn execute_command(command: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .output()?;
-
-    if output.status.success() {
-        Ok(String::from_utf8(output.stdout)?)
-    } else {
-        let error_msg = String::from_utf8(output.stderr)?;
-        Err(format!("Command failed: {}", error_msg).into())
     }
 }
 

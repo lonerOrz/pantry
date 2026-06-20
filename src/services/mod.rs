@@ -1,5 +1,6 @@
 pub mod expansion;
 pub mod item_service;
+pub mod loader;
 pub mod output;
 pub mod preview;
 
