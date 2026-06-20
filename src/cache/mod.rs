@@ -1,3 +1,4 @@
+use crate::constants::CACHE_MAX_SIZE_BYTES;
 use std::fs;
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -54,7 +55,44 @@ impl CacheManager {
         writer.write_all(&height.to_ne_bytes())?;
         writer.write_all(raw_data)?;
         writer.flush()?;
+
+        self.evict_if_needed();
+
         Ok(())
+    }
+
+    fn evict_if_needed(&self) {
+        let mut entries: Vec<(PathBuf, u64, std::time::SystemTime)> = Vec::new();
+        let mut total_size: u64 = 0;
+
+        if let Ok(read_dir) = fs::read_dir(&self.cache_dir) {
+            for entry in read_dir.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("raw")
+                    && let Ok(meta) = fs::metadata(&path)
+                {
+                    let size = meta.len();
+                    let mtime = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                    total_size += size;
+                    entries.push((path, size, mtime));
+                }
+            }
+        }
+
+        if total_size <= CACHE_MAX_SIZE_BYTES {
+            return;
+        }
+
+        entries.sort_by(|a, b| a.2.cmp(&b.2));
+
+        for (path, size, _) in &entries {
+            if total_size <= CACHE_MAX_SIZE_BYTES {
+                break;
+            }
+            if fs::remove_file(path).is_ok() {
+                total_size -= size;
+            }
+        }
     }
 
     pub fn load_raw_cache(&self, path: &Path) -> Option<(Vec<u8>, i32, i32)> {
