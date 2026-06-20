@@ -1,4 +1,5 @@
-use crate::services::preview::{PreviewPayload, PreviewService};
+use crate::cache::CacheManager;
+use crate::services::preview::{GdkPixbufDecoder, PreviewPayload, ProdPreviewService, ShellExec};
 use crate::ui::list::ListState;
 use crate::ui::preview::PreviewArea;
 use gtk4::{gio, glib};
@@ -7,7 +8,7 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-static PREVIEW_SERVICE: OnceLock<PreviewService> = OnceLock::new();
+static PREVIEW_SERVICE: OnceLock<ProdPreviewService> = OnceLock::new();
 
 pub struct PreviewManager;
 
@@ -36,7 +37,9 @@ impl PreviewManager {
             .render(PreviewPayload::Text("Loading...".to_string()), &item);
 
         let preview_area = preview_area_rc.clone();
-        let service = PREVIEW_SERVICE.get_or_init(PreviewService::new);
+        let service = PREVIEW_SERVICE.get_or_init(|| {
+            ProdPreviewService::new(CacheManager::new(), ShellExec, GdkPixbufDecoder)
+        });
         let item_clone = item.clone();
 
         glib::spawn_future_local(async move {

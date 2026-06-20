@@ -2,8 +2,8 @@ use crate::cache::CacheManager;
 use crate::domain::item::Item;
 use gdk_pixbuf::Pixbuf;
 use image::ImageReader;
-use std::path::Path;
-use std::process::Command;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -19,14 +19,108 @@ pub enum PreviewPayload {
     Error(String),
 }
 
-pub struct PreviewService {
-    cache: CacheManager,
+pub struct CommandOutput {
+    pub success: bool,
+    pub stdout: Vec<u8>,
 }
 
-impl PreviewService {
-    pub fn new() -> Self {
+pub trait CacheAdapter: Send + Sync {
+    fn get_cache_path(&self, category: &str, original_path: &Path) -> PathBuf;
+    fn is_cache_valid(&self, cache_path: &Path, original_path: &Path) -> bool;
+    fn save_raw_cache(
+        &self,
+        path: &Path,
+        raw_data: &[u8],
+        width: i32,
+        height: i32,
+    ) -> io::Result<()>;
+    fn load_raw_cache(&self, path: &Path) -> Option<(Vec<u8>, i32, i32)>;
+}
+
+pub trait CommandExecutor: Send + Sync {
+    fn execute(&self, program: &str, args: &[&str]) -> io::Result<CommandOutput>;
+}
+
+pub trait ImageDecoder: Send + Sync {
+    fn load_from_path(
+        &self,
+        path: &Path,
+        max_width: i32,
+        max_height: i32,
+    ) -> Option<(Vec<u8>, i32, i32)>;
+}
+
+impl CacheAdapter for CacheManager {
+    fn get_cache_path(&self, category: &str, original_path: &Path) -> PathBuf {
+        self.get_cache_path(category, original_path)
+    }
+
+    fn is_cache_valid(&self, cache_path: &Path, original_path: &Path) -> bool {
+        self.is_cache_valid(cache_path, original_path)
+    }
+
+    fn save_raw_cache(
+        &self,
+        path: &Path,
+        raw_data: &[u8],
+        width: i32,
+        height: i32,
+    ) -> io::Result<()> {
+        self.save_raw_cache(path, raw_data, width, height)
+    }
+
+    fn load_raw_cache(&self, path: &Path) -> Option<(Vec<u8>, i32, i32)> {
+        self.load_raw_cache(path)
+    }
+}
+
+pub struct ShellExec;
+
+impl CommandExecutor for ShellExec {
+    fn execute(&self, program: &str, args: &[&str]) -> io::Result<CommandOutput> {
+        let output = std::process::Command::new(program).args(args).output()?;
+        Ok(CommandOutput {
+            success: output.status.success(),
+            stdout: output.stdout,
+        })
+    }
+}
+
+pub struct GdkPixbufDecoder;
+
+impl ImageDecoder for GdkPixbufDecoder {
+    fn load_from_path(
+        &self,
+        path: &Path,
+        max_width: i32,
+        max_height: i32,
+    ) -> Option<(Vec<u8>, i32, i32)> {
+        if path
+            .extension()
+            .and_then(|s| s.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("gif"))
+        {
+            load_gif_first_frame(path, max_width, max_height)
+        } else {
+            load_image_data_raw(path, max_width, max_height)
+        }
+    }
+}
+
+pub type ProdPreviewService = PreviewService<CacheManager, ShellExec, GdkPixbufDecoder>;
+
+pub struct PreviewService<C: CacheAdapter, E: CommandExecutor, D: ImageDecoder> {
+    cache: C,
+    executor: E,
+    decoder: D,
+}
+
+impl<C: CacheAdapter, E: CommandExecutor, D: ImageDecoder> PreviewService<C, E, D> {
+    pub fn new(cache: C, executor: E, decoder: D) -> Self {
         Self {
-            cache: CacheManager::new(),
+            cache,
+            executor,
+            decoder,
         }
     }
 
@@ -72,17 +166,7 @@ impl PreviewService {
         let max_w = crate::constants::IMAGE_PREVIEW_WIDTH;
         let max_h = crate::constants::IMAGE_PREVIEW_HEIGHT;
 
-        let result = if path
-            .extension()
-            .and_then(|s| s.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("gif"))
-        {
-            load_gif_first_frame(path, max_w, max_h)
-        } else {
-            load_image_data_raw(path, max_w, max_h)
-        };
-
-        if let Some((bytes, w, h)) = result {
+        if let Some((bytes, w, h)) = self.decoder.load_from_path(path, max_w, max_h) {
             let _ = self.cache.save_raw_cache(cache_path, &bytes, w, h);
             PreviewPayload::Image {
                 bytes: Arc::new(bytes),
@@ -102,28 +186,28 @@ impl PreviewService {
 
         let temp_png = cache_path.with_file_name(format!("{}_thumb_temp.png", video_stem));
 
-        let result = Command::new("ffmpeg")
-            .args([
-                "-y",
-                "-ss",
-                "1",
-                "-i",
-                &video_path.to_string_lossy(),
-                "-vframes",
-                "1",
-                "-vf",
-                "scale=800:-1",
-                "-preset",
-                "ultrafast",
-                "-q:v",
-                "5",
-                &temp_png.to_string_lossy(),
-            ])
-            .output();
+        let video_str = video_path.to_string_lossy();
+        let temp_str = temp_png.to_string_lossy();
+        let args: [&str; 14] = [
+            "-y",
+            "-ss",
+            "1",
+            "-i",
+            &video_str,
+            "-vframes",
+            "1",
+            "-vf",
+            "scale=800:-1",
+            "-preset",
+            "ultrafast",
+            "-q:v",
+            "5",
+            &temp_str,
+        ];
 
-        match result {
-            Ok(output) if output.status.success() => {
-                if let Some((raw_data, w, h)) = load_image_data_raw(&temp_png, 800, 600) {
+        match self.executor.execute("ffmpeg", &args) {
+            Ok(output) if output.success => {
+                if let Some((raw_data, w, h)) = self.decoder.load_from_path(&temp_png, 800, 600) {
                     let _ = self.cache.save_raw_cache(cache_path, &raw_data, w, h);
                     let _ = std::fs::remove_file(&temp_png);
                     PreviewPayload::Image {
@@ -150,8 +234,8 @@ impl PreviewService {
             format!("cliphist decode {}", item.value)
         };
 
-        match Command::new("sh").arg("-c").arg(&preview_cmd).output() {
-            Ok(output) if output.status.success() => {
+        match self.executor.execute("sh", &["-c", &preview_cmd]) {
+            Ok(output) if output.success => {
                 let is_binary = output
                     .stdout
                     .iter()
@@ -172,7 +256,7 @@ impl PreviewService {
                         let max_w = crate::constants::IMAGE_PREVIEW_WIDTH;
                         let max_h = crate::constants::IMAGE_PREVIEW_HEIGHT;
                         if let Some((bytes, w, h)) =
-                            load_image_data_raw(temp_file.path(), max_w, max_h)
+                            self.decoder.load_from_path(temp_file.path(), max_w, max_h)
                         {
                             PreviewPayload::Image {
                                 bytes: Arc::new(bytes),
@@ -302,4 +386,327 @@ fn load_image_data_raw(
     }
 
     Some((rgba_data, width, height))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{DisplayMode, SourceMode};
+    use std::collections::HashMap;
+    use std::sync::RwLock;
+
+    struct MockCache {
+        valid_entries: HashMap<PathBuf, bool>,
+        stored: RwLock<HashMap<PathBuf, (Vec<u8>, i32, i32)>>,
+    }
+
+    impl MockCache {
+        fn new() -> Self {
+            Self {
+                valid_entries: HashMap::new(),
+                stored: RwLock::new(HashMap::new()),
+            }
+        }
+
+        fn with_valid(mut self, cache_path: PathBuf, data: Vec<u8>, w: i32, h: i32) -> Self {
+            self.valid_entries.insert(cache_path.clone(), true);
+            self.stored
+                .write()
+                .unwrap()
+                .insert(cache_path, (data, w, h));
+            self
+        }
+    }
+
+    impl CacheAdapter for MockCache {
+        fn get_cache_path(&self, category: &str, original_path: &Path) -> PathBuf {
+            PathBuf::from(format!(
+                "mock_cache/{}_{}",
+                category,
+                original_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+            ))
+        }
+
+        fn is_cache_valid(&self, cache_path: &Path, _original_path: &Path) -> bool {
+            *self.valid_entries.get(cache_path).unwrap_or(&false)
+        }
+
+        fn save_raw_cache(
+            &self,
+            path: &Path,
+            raw_data: &[u8],
+            width: i32,
+            height: i32,
+        ) -> io::Result<()> {
+            self.stored
+                .write()
+                .unwrap()
+                .insert(path.to_path_buf(), (raw_data.to_vec(), width, height));
+            Ok(())
+        }
+
+        fn load_raw_cache(&self, path: &Path) -> Option<(Vec<u8>, i32, i32)> {
+            self.stored.read().unwrap().get(path).cloned()
+        }
+    }
+
+    struct MockExec {
+        responses: RwLock<Vec<io::Result<CommandOutput>>>,
+    }
+
+    impl MockExec {
+        fn new() -> Self {
+            Self {
+                responses: RwLock::new(Vec::new()),
+            }
+        }
+
+        fn push_ok(self, success: bool, stdout: Vec<u8>) -> Self {
+            self.responses
+                .write()
+                .unwrap()
+                .push(Ok(CommandOutput { success, stdout }));
+            self
+        }
+
+        fn push_err(self, err: io::Error) -> Self {
+            self.responses.write().unwrap().push(Err(err));
+            self
+        }
+    }
+
+    impl CommandExecutor for MockExec {
+        fn execute(&self, _program: &str, _args: &[&str]) -> io::Result<CommandOutput> {
+            self.responses
+                .write()
+                .unwrap()
+                .pop()
+                .unwrap_or_else(|| Err(io::Error::new(io::ErrorKind::Other, "no mock response")))
+        }
+    }
+
+    struct MockDecoder {
+        result: Option<(Vec<u8>, i32, i32)>,
+    }
+
+    impl MockDecoder {
+        fn new() -> Self {
+            Self { result: None }
+        }
+
+        fn with_result(mut self, data: Vec<u8>, w: i32, h: i32) -> Self {
+            self.result = Some((data, w, h));
+            self
+        }
+    }
+
+    impl ImageDecoder for MockDecoder {
+        fn load_from_path(
+            &self,
+            _path: &Path,
+            _max_width: i32,
+            _max_height: i32,
+        ) -> Option<(Vec<u8>, i32, i32)> {
+            self.result.clone()
+        }
+    }
+
+    fn text_item(value: &str) -> Item {
+        Item::builder()
+            .title("test".into())
+            .value(value.into())
+            .category("cat".into())
+            .display(DisplayMode::Text)
+            .source(SourceMode::Config)
+            .build()
+    }
+
+    fn dynamic_item(value: &str) -> Item {
+        Item::builder()
+            .title("test".into())
+            .value(value.into())
+            .category("cat".into())
+            .display(DisplayMode::Text)
+            .source(SourceMode::Dynamic)
+            .build()
+    }
+
+    fn dynamic_item_with_template(value: &str, template: &str) -> Item {
+        Item::builder()
+            .title("test".into())
+            .value(value.into())
+            .category("cat".into())
+            .display(DisplayMode::Text)
+            .source(SourceMode::Dynamic)
+            .preview_template(template.into())
+            .build()
+    }
+
+    fn picture_item(path: &str) -> Item {
+        Item::builder()
+            .title("test".into())
+            .value(path.into())
+            .category("cat".into())
+            .display(DisplayMode::Picture)
+            .source(SourceMode::Config)
+            .build()
+    }
+
+    #[test]
+    fn text_mode_returns_value() {
+        let svc = PreviewService::new(MockCache::new(), MockExec::new(), MockDecoder::new());
+        let item = text_item("hello world");
+        assert!(matches!(
+            svc.resolve_payload(&item),
+            PreviewPayload::Text(ref s) if s == "hello world"
+        ));
+    }
+
+    #[test]
+    fn dynamic_text_stdout() {
+        let exec = MockExec::new().push_ok(true, b"clipboard text".to_vec());
+        let svc = PreviewService::new(MockCache::new(), exec, MockDecoder::new());
+        let item = dynamic_item("id123");
+        assert!(matches!(
+            svc.resolve_payload(&item),
+            PreviewPayload::Text(ref s) if s == "clipboard text"
+        ));
+    }
+
+    #[test]
+    fn dynamic_command_failure_returns_value() {
+        let exec = MockExec::new().push_err(io::Error::new(io::ErrorKind::NotFound, "no such cmd"));
+        let svc = PreviewService::new(MockCache::new(), exec, MockDecoder::new());
+        let item = dynamic_item("fallback");
+        assert!(matches!(
+            svc.resolve_payload(&item),
+            PreviewPayload::Text(ref s) if s == "fallback"
+        ));
+    }
+
+    #[test]
+    fn dynamic_nonzero_exit_returns_value() {
+        let exec = MockExec::new().push_ok(false, Vec::new());
+        let svc = PreviewService::new(MockCache::new(), exec, MockDecoder::new());
+        let item = dynamic_item("val");
+        assert!(matches!(
+            svc.resolve_payload(&item),
+            PreviewPayload::Text(ref s) if s == "val"
+        ));
+    }
+
+    #[test]
+    fn dynamic_binary_stdout_decoded() {
+        let exec = MockExec::new().push_ok(true, vec![0x00, 0x01, 0x02]);
+        let decoder = MockDecoder::new().with_result(vec![255; 400], 20, 20);
+        let svc = PreviewService::new(MockCache::new(), exec, decoder);
+        let item = dynamic_item("bin123");
+        match svc.resolve_payload(&item) {
+            PreviewPayload::Image {
+                bytes,
+                width,
+                height,
+            } => {
+                assert_eq!(*bytes, vec![255u8; 400]);
+                assert_eq!(width, 20);
+                assert_eq!(height, 20);
+            }
+            other => panic!("expected Image, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn dynamic_template_expansion() {
+        let exec = MockExec::new().push_ok(true, b"expanded output".to_vec());
+        let svc = PreviewService::new(MockCache::new(), exec, MockDecoder::new());
+        let item = dynamic_item_with_template("myid", "echo {}");
+        assert!(matches!(
+            svc.resolve_payload(&item),
+            PreviewPayload::Text(ref s) if s == "expanded output"
+        ));
+    }
+
+    #[test]
+    fn picture_nonexistent_returns_value() {
+        let svc = PreviewService::new(MockCache::new(), MockExec::new(), MockDecoder::new());
+        let item = picture_item("/nonexistent/path/image.png");
+        assert!(matches!(
+            svc.resolve_payload(&item),
+            PreviewPayload::Text(ref s) if s == "/nonexistent/path/image.png"
+        ));
+    }
+
+    #[test]
+    fn picture_cache_hit() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().to_path_buf();
+
+        let mut cache = MockCache::new();
+        let cached_data = vec![128; 100];
+        let cache_path = cache.get_cache_path("cat", &path);
+        cache = cache.with_valid(cache_path, cached_data.clone(), 5, 5);
+
+        let svc = PreviewService::new(cache, MockExec::new(), MockDecoder::new());
+        let item = picture_item(&path.to_string_lossy());
+        match svc.resolve_payload(&item) {
+            PreviewPayload::Image {
+                bytes,
+                width,
+                height,
+            } => {
+                assert_eq!(*bytes, cached_data);
+                assert_eq!(width, 5);
+                assert_eq!(height, 5);
+            }
+            other => panic!("expected cached Image, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn picture_cache_miss_generates() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().to_path_buf();
+
+        let decoder = MockDecoder::new().with_result(vec![64; 80], 4, 5);
+        let svc = PreviewService::new(MockCache::new(), MockExec::new(), decoder);
+        let item = picture_item(&path.to_string_lossy());
+        match svc.resolve_payload(&item) {
+            PreviewPayload::Image {
+                bytes,
+                width,
+                height,
+            } => {
+                assert_eq!(*bytes, vec![64u8; 80]);
+                assert_eq!(width, 4);
+                assert_eq!(height, 5);
+            }
+            other => panic!("expected generated Image, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn picture_video_uses_ffmpeg() {
+        let tmp = tempfile::Builder::new().suffix(".mp4").tempfile().unwrap();
+        let path = tmp.path().to_path_buf();
+
+        let exec = MockExec::new().push_ok(true, Vec::new());
+        let decoder = MockDecoder::new().with_result(vec![200; 160], 8, 10);
+        let svc = PreviewService::new(MockCache::new(), exec, decoder);
+        let item = picture_item(&path.to_string_lossy());
+        match svc.resolve_payload(&item) {
+            PreviewPayload::Image {
+                bytes,
+                width,
+                height,
+            } => {
+                assert_eq!(*bytes, vec![200u8; 160]);
+                assert_eq!(width, 8);
+                assert_eq!(height, 10);
+            }
+            other => panic!("expected video thumbnail Image, got {:?}", other),
+        }
+    }
 }
