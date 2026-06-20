@@ -1,6 +1,6 @@
-use crate::config::{DisplayMode, SourceMode};
 use crate::constants::{DYNAMIC_OUTPUT_MAX_BYTES, MAX_ITEMS};
 use crate::domain::item::Item;
+use crate::domain::{DisplayMode, SourceMode};
 
 pub struct ItemProcessor;
 

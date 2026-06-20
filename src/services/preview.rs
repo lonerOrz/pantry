@@ -399,7 +399,7 @@ fn load_image_data_raw(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{DisplayMode, SourceMode};
+    use crate::domain::{DisplayMode, SourceMode};
     use std::collections::HashMap;
     use std::sync::RwLock;
 

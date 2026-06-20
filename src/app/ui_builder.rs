@@ -5,10 +5,9 @@ use gtk4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::app::application::Args;
-use crate::config::{DisplayMode, SourceMode, resolve_display_mode};
 use crate::constants::MAX_ITEMS;
 use crate::domain::item::Item;
+use crate::domain::{DisplayMode, SourceMode};
 use crate::ui::{list::ListState, preview, window};
 use crate::window_state::WindowState;
 
@@ -16,7 +15,6 @@ pub struct UiBuilder;
 
 impl UiBuilder {
     pub fn build_stdin_ui(
-        args: &Args,
         window_state: &WindowState,
         app: &Application,
         query_state: crate::ui::search::SearchState,
@@ -26,10 +24,10 @@ impl UiBuilder {
         Option<Rc<RefCell<preview::PreviewArea>>>,
         SearchEntry,
     ) {
-        let window = window::create_main_window(app, args);
+        let window = window::create_main_window(app);
         window.set_default_size(window_state.width, window_state.height);
 
-        let display_mode = resolve_display_mode(&args.display, &None, &DisplayMode::Text);
+        let display_mode = DisplayMode::Text;
         let list_state = ListState::new(query_state.clone());
         let (main_widget, preview_area_rc_opt) =
             build_main_widget(&list_state, display_mode.clone());
@@ -150,7 +148,6 @@ impl UiBuilder {
     }
 
     pub fn build_config_ui(
-        args: &Args,
         window_state: &WindowState,
         app: &Application,
         query_state: crate::ui::search::SearchState,
@@ -161,7 +158,7 @@ impl UiBuilder {
         Option<Rc<RefCell<preview::PreviewArea>>>,
         SearchEntry,
     ) {
-        let window = window::create_main_window(app, args);
+        let window = window::create_main_window(app);
         window.set_default_size(window_state.width, window_state.height);
 
         if window_state.maximized {

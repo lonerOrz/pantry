@@ -1,6 +1,7 @@
-use crate::config::{Category, Config, DisplayMode, SourceMode};
+use crate::config::{Category, Config};
 use crate::constants::MAX_ITEMS;
 use crate::domain::item::Item;
+use crate::domain::{DisplayMode, SourceMode};
 use std::path::PathBuf;
 
 pub fn load_items(

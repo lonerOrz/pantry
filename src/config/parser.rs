@@ -1,22 +1,7 @@
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum DisplayMode {
-    #[default]
-    Text,
-    Picture,
-}
-
-#[derive(Debug, Deserialize, Clone, PartialEq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum SourceMode {
-    #[default]
-    Config,
-    Command,
-    Dynamic,
-}
+use crate::domain::{DisplayMode, SourceMode};
 
 #[derive(Debug, Clone)]
 pub struct Category {

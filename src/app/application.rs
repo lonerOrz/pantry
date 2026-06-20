@@ -65,12 +65,7 @@ impl PantryApp {
                 let search_query: crate::ui::search::SearchState =
                     Rc::new(RefCell::new(String::new()));
                 let (window, list_state, preview_area_rc_opt, search_entry) =
-                    UiBuilder::build_stdin_ui(
-                        &self.args,
-                        &self.window_state,
-                        app,
-                        search_query.clone(),
-                    );
+                    UiBuilder::build_stdin_ui(&self.window_state, app, search_query.clone());
 
                 EventHandler::setup_keyboard_controller(
                     &window,
@@ -92,7 +87,6 @@ impl PantryApp {
                 );
                 let (window, list_state, preview_area_rc_opt, search_entry) =
                     UiBuilder::build_config_ui(
-                        &self.args,
                         &self.window_state,
                         app,
                         search_query.clone(),

@@ -1,4 +1,4 @@
-use crate::config::DisplayMode;
+use crate::domain::DisplayMode;
 
 /// Unified display mode resolution with priority: command line > category > global > default
 pub fn resolve_display_mode(

@@ -1,4 +1,4 @@
-use crate::config::{DisplayMode, SourceMode};
+use super::{DisplayMode, SourceMode};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
