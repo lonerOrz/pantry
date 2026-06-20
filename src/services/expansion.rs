@@ -1,5 +1,5 @@
 use crate::config::{DisplayMode, SourceMode};
-use crate::constants::MAX_ITEMS;
+use crate::constants::{DYNAMIC_OUTPUT_MAX_BYTES, MAX_ITEMS};
 use crate::domain::item::Item;
 
 pub struct ItemProcessor;
@@ -72,7 +72,9 @@ impl ItemProcessor {
         list_command: &str,
         preview_template: &str,
     ) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
-        let child = std::process::Command::new("sh")
+        use std::io::Read;
+
+        let mut child = std::process::Command::new("sh")
             .arg("-c")
             .arg(list_command)
             .stdin(std::process::Stdio::null())
@@ -85,15 +87,29 @@ impl ItemProcessor {
         let (tx, rx) = std::sync::mpsc::channel();
 
         std::thread::spawn(move || {
-            let result = child.wait_with_output();
-            let _ = tx.send(result);
+            let mut stdout = child.stdout.take().expect("stdout was piped");
+            let mut buf = Vec::with_capacity(8192);
+            let mut chunk = [0u8; 8192];
+
+            loop {
+                match stdout.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if buf.len() + n > DYNAMIC_OUTPUT_MAX_BYTES {
+                            break;
+                        }
+                        buf.extend_from_slice(&chunk[..n]);
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            let status = child.wait();
+            let _ = tx.send((status, buf));
         });
 
-        let output = match rx.recv_timeout(std::time::Duration::from_secs(30)) {
-            Ok(Ok(output)) => output,
-            Ok(Err(e)) => {
-                return Err(format!("Dynamic source command failed: {}", e).into());
-            }
+        let (status, stdout_buf) = match rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok(result) => result,
             Err(_) => {
                 let _ = std::process::Command::new("kill")
                     .arg("-9")
@@ -103,15 +119,25 @@ impl ItemProcessor {
             }
         };
 
-        if !output.status.success() {
-            return Err(format!(
-                "List command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            )
-            .into());
+        match status {
+            Ok(s) if !s.success() => {
+                return Err("List command failed".into());
+            }
+            Err(e) => {
+                return Err(format!("Dynamic source command failed: {}", e).into());
+            }
+            _ => {}
         }
 
-        let raw_stdout = String::from_utf8_lossy(&output.stdout);
+        let truncated = stdout_buf.len() >= DYNAMIC_OUTPUT_MAX_BYTES;
+        if truncated {
+            eprintln!(
+                "Warning: dynamic source output exceeded {} bytes, truncated",
+                DYNAMIC_OUTPUT_MAX_BYTES
+            );
+        }
+
+        let raw_stdout = String::from_utf8_lossy(&stdout_buf);
         let sanitized_stdout = raw_stdout.replace('\0', "");
 
         let mut items = Vec::new();
