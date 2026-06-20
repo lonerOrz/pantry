@@ -19,10 +19,7 @@ pub enum PreviewPayload {
     Error(String),
 }
 
-pub struct CommandOutput {
-    pub success: bool,
-    pub stdout: Vec<u8>,
-}
+pub use crate::services::process::{CommandExecutor, ShellExec};
 
 pub trait CacheAdapter: Send + Sync {
     fn get_cache_path(&self, category: &str, original_path: &Path) -> PathBuf;
@@ -35,10 +32,6 @@ pub trait CacheAdapter: Send + Sync {
         height: i32,
     ) -> io::Result<()>;
     fn load_raw_cache(&self, path: &Path) -> Option<(Vec<u8>, i32, i32)>;
-}
-
-pub trait CommandExecutor: Send + Sync {
-    fn execute(&self, program: &str, args: &[&str]) -> io::Result<CommandOutput>;
 }
 
 pub trait ImageDecoder: Send + Sync {
@@ -71,18 +64,6 @@ impl CacheAdapter for CacheManager {
 
     fn load_raw_cache(&self, path: &Path) -> Option<(Vec<u8>, i32, i32)> {
         self.load_raw_cache(path)
-    }
-}
-
-pub struct ShellExec;
-
-impl CommandExecutor for ShellExec {
-    fn execute(&self, program: &str, args: &[&str]) -> io::Result<CommandOutput> {
-        let output = std::process::Command::new(program).args(args).output()?;
-        Ok(CommandOutput {
-            success: output.status.success(),
-            stdout: output.stdout,
-        })
     }
 }
 
@@ -400,6 +381,7 @@ fn load_image_data_raw(
 mod tests {
     use super::*;
     use crate::domain::{DisplayMode, SourceMode};
+    use crate::services::process::MockExec;
     use std::collections::HashMap;
     use std::sync::RwLock;
 
@@ -458,41 +440,6 @@ mod tests {
 
         fn load_raw_cache(&self, path: &Path) -> Option<(Vec<u8>, i32, i32)> {
             self.stored.read().unwrap().get(path).cloned()
-        }
-    }
-
-    struct MockExec {
-        responses: RwLock<Vec<io::Result<CommandOutput>>>,
-    }
-
-    impl MockExec {
-        fn new() -> Self {
-            Self {
-                responses: RwLock::new(Vec::new()),
-            }
-        }
-
-        fn push_ok(self, success: bool, stdout: Vec<u8>) -> Self {
-            self.responses
-                .write()
-                .unwrap()
-                .push(Ok(CommandOutput { success, stdout }));
-            self
-        }
-
-        fn push_err(self, err: io::Error) -> Self {
-            self.responses.write().unwrap().push(Err(err));
-            self
-        }
-    }
-
-    impl CommandExecutor for MockExec {
-        fn execute(&self, _program: &str, _args: &[&str]) -> io::Result<CommandOutput> {
-            self.responses
-                .write()
-                .unwrap()
-                .pop()
-                .unwrap_or_else(|| Err(io::Error::new(io::ErrorKind::Other, "no mock response")))
         }
     }
 

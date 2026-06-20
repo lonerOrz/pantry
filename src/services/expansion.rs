@@ -1,6 +1,7 @@
 use crate::constants::{DYNAMIC_OUTPUT_MAX_BYTES, MAX_ITEMS};
 use crate::domain::item::Item;
 use crate::domain::{DisplayMode, SourceMode};
+use crate::services::process::CommandExecutor;
 
 pub struct ItemProcessor;
 
@@ -71,65 +72,15 @@ impl ItemProcessor {
     pub fn process_dynamic_source(
         list_command: &str,
         preview_template: &str,
+        executor: &dyn CommandExecutor,
     ) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
-        use std::io::Read;
+        let output = executor.execute_with_timeout("sh", &["-c", list_command], 30)?;
 
-        let mut child = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(list_command)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Failed to spawn dynamic source command: {}", e))?;
-
-        let pid = child.id();
-        let (tx, rx) = std::sync::mpsc::channel();
-
-        std::thread::spawn(move || {
-            let mut stdout = child.stdout.take().expect("stdout was piped");
-            let mut buf = Vec::with_capacity(8192);
-            let mut chunk = [0u8; 8192];
-
-            loop {
-                match stdout.read(&mut chunk) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        if buf.len() + n > DYNAMIC_OUTPUT_MAX_BYTES {
-                            break;
-                        }
-                        buf.extend_from_slice(&chunk[..n]);
-                    }
-                    Err(_) => break,
-                }
-            }
-
-            let status = child.wait();
-            let _ = tx.send((status, buf));
-        });
-
-        let (status, stdout_buf) = match rx.recv_timeout(std::time::Duration::from_secs(30)) {
-            Ok(result) => result,
-            Err(_) => {
-                let _ = std::process::Command::new("kill")
-                    .arg("-9")
-                    .arg(pid.to_string())
-                    .output();
-                return Err("Dynamic source command timed out after 30 seconds".into());
-            }
-        };
-
-        match status {
-            Ok(s) if !s.success() => {
-                return Err("List command failed".into());
-            }
-            Err(e) => {
-                return Err(format!("Dynamic source command failed: {}", e).into());
-            }
-            _ => {}
+        if !output.success {
+            return Err("List command failed".into());
         }
 
-        let truncated = stdout_buf.len() >= DYNAMIC_OUTPUT_MAX_BYTES;
+        let truncated = output.stdout.len() >= DYNAMIC_OUTPUT_MAX_BYTES;
         if truncated {
             eprintln!(
                 "Warning: dynamic source output exceeded {} bytes, truncated",
@@ -137,7 +88,7 @@ impl ItemProcessor {
             );
         }
 
-        let raw_stdout = String::from_utf8_lossy(&stdout_buf);
+        let raw_stdout = String::from_utf8_lossy(&output.stdout);
         let sanitized_stdout = raw_stdout.replace('\0', "");
 
         let mut items = Vec::new();
@@ -174,5 +125,62 @@ impl ItemProcessor {
         }
 
         Ok(items)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::process::MockExec;
+
+    #[test]
+    fn dynamic_single_line() {
+        let exec = MockExec::new().push_ok(true, b"item1\tValue 1\n".to_vec());
+        let items = ItemProcessor::process_dynamic_source("echo test", "", &exec).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Value 1");
+        assert_eq!(items[0].value, "item1");
+        assert_eq!(items[0].source, SourceMode::Dynamic);
+    }
+
+    #[test]
+    fn dynamic_multi_line() {
+        let exec = MockExec::new().push_ok(true, b"a\t1\nb\t2\nc\t3\n".to_vec());
+        let items = ItemProcessor::process_dynamic_source("echo test", "", &exec).unwrap();
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].title, "1");
+        assert_eq!(items[1].title, "2");
+        assert_eq!(items[2].title, "3");
+    }
+
+    #[test]
+    fn dynamic_empty_lines_skipped() {
+        let exec = MockExec::new().push_ok(true, b"\na\t1\n\nb\t2\n".to_vec());
+        let items = ItemProcessor::process_dynamic_source("echo test", "", &exec).unwrap();
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn dynamic_template_applied() {
+        let exec = MockExec::new().push_ok(true, b"id1\tName\n".to_vec());
+        let items =
+            ItemProcessor::process_dynamic_source("echo test", "preview {}", &exec).unwrap();
+        assert_eq!(items[0].preview_template.as_deref(), Some("preview {}"));
+    }
+
+    #[test]
+    fn dynamic_command_failure() {
+        let exec = MockExec::new().push_ok(false, Vec::new());
+        let result = ItemProcessor::process_dynamic_source("false", "", &exec);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn dynamic_no_tab_single_field() {
+        let exec = MockExec::new().push_ok(true, b"hello world\n".to_vec());
+        let items = ItemProcessor::process_dynamic_source("echo test", "", &exec).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "hello world");
+        assert_eq!(items[0].value, "hello world");
     }
 }
