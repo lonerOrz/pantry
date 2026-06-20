@@ -85,12 +85,18 @@ impl PantryApp {
             InputMode::Config => {
                 let search_query: crate::ui::search::SearchState =
                     Rc::new(RefCell::new(String::new()));
+                let display_mode = crate::config::get_config_display_mode(
+                    &self.args.config,
+                    &self.args.category,
+                    &self.args.display,
+                );
                 let (window, list_state, preview_area_rc_opt, search_entry) =
                     UiBuilder::build_config_ui(
                         &self.args,
                         &self.window_state,
                         app,
                         search_query.clone(),
+                        display_mode,
                     );
 
                 EventHandler::setup_keyboard_controller(

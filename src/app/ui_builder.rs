@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::app::application::Args;
-use crate::config::{DisplayMode, SourceMode, get_config_display_mode, resolve_display_mode};
+use crate::config::{DisplayMode, SourceMode, resolve_display_mode};
 use crate::constants::MAX_ITEMS;
 use crate::domain::item::Item;
 use crate::ui::{list::ListState, preview, window};
@@ -154,6 +154,7 @@ impl UiBuilder {
         window_state: &WindowState,
         app: &Application,
         query_state: crate::ui::search::SearchState,
+        display_mode: DisplayMode,
     ) -> (
         ApplicationWindow,
         ListState,
@@ -166,8 +167,6 @@ impl UiBuilder {
         if window_state.maximized {
             window.maximize();
         }
-
-        let display_mode = get_config_display_mode(&args.config, &args.category, &args.display);
         let list_state = ListState::new(query_state.clone());
         let (main_widget, preview_area_rc_opt) =
             build_main_widget(&list_state, display_mode.clone());
