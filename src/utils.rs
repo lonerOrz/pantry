@@ -37,3 +37,43 @@ pub fn path_to_safe_filename<P: AsRef<Path>>(path: P) -> String {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expand_tilde_with_home() {
+        let result = expand_tilde("~/foo");
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(result, home.join("foo"));
+    }
+
+    #[test]
+    fn expand_tilde_without_home() {
+        let result = expand_tilde("/tmp/foo");
+        assert_eq!(result, PathBuf::from("/tmp/foo"));
+    }
+
+    #[test]
+    fn expand_tilde_bare() {
+        let result = expand_tilde("~");
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(result, home);
+    }
+
+    #[test]
+    fn safe_filename_replaces_illegal() {
+        assert_eq!(path_to_safe_filename("a/b:c*d"), "a_b_c_d");
+    }
+
+    #[test]
+    fn safe_filename_preserves_normal() {
+        assert_eq!(path_to_safe_filename("hello.txt"), "hello.txt");
+    }
+
+    #[test]
+    fn safe_filename_handles_control_chars() {
+        assert_eq!(path_to_safe_filename("a\u{0000}b"), "a_b");
+    }
+}

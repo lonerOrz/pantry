@@ -1,7 +1,4 @@
-use gtk4::{
-    AboutDialog, ApplicationWindow, Button, HeaderBar, Label, SearchEntry,
-    prelude::*,
-};
+use gtk4::{AboutDialog, ApplicationWindow, Button, HeaderBar, Label, SearchEntry, prelude::*};
 
 use crate::app::preview_manager::PreviewManager;
 use crate::ui::list::ListState;

@@ -38,3 +38,48 @@ pub fn get_config_display_mode(
     }
     resolve_display_mode(display_arg, &None, &DisplayMode::Text)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_cli_overrides_all() {
+        assert_eq!(
+            resolve_display_mode(
+                &Some("picture".into()),
+                &Some(DisplayMode::Text),
+                &DisplayMode::Text
+            ),
+            DisplayMode::Picture
+        );
+    }
+
+    #[test]
+    fn resolve_category_over_global() {
+        assert_eq!(
+            resolve_display_mode(&None, &Some(DisplayMode::Picture), &DisplayMode::Text),
+            DisplayMode::Picture
+        );
+    }
+
+    #[test]
+    fn resolve_global_default() {
+        assert_eq!(
+            resolve_display_mode(&None, &None, &DisplayMode::Text),
+            DisplayMode::Text
+        );
+    }
+
+    #[test]
+    fn resolve_invalid_cli_falls_through() {
+        assert_eq!(
+            resolve_display_mode(
+                &Some("invalid".into()),
+                &Some(DisplayMode::Picture),
+                &DisplayMode::Text
+            ),
+            DisplayMode::Picture
+        );
+    }
+}

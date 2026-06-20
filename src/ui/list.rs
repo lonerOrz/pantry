@@ -1,4 +1,5 @@
 use crate::domain::item::Item;
+use crate::domain::r#match::{fuzzy_match, relevance_score};
 use crate::ui::item_object::ItemObject;
 use gtk4::prelude::*;
 use gtk4::{
@@ -112,31 +113,15 @@ fn build_sorter(query_state: SearchState) -> CustomSorter {
         let item1 = obj1.downcast_ref::<ItemObject>();
         let item2 = obj2.downcast_ref::<ItemObject>();
 
-        let score1 = item1.and_then(|i| relevance_score(i, &query)).unwrap_or(0);
-        let score2 = item2.and_then(|i| relevance_score(i, &query)).unwrap_or(0);
+        let score1 = item1
+            .and_then(|i| relevance_score(&i.title(), &i.value(), &query))
+            .unwrap_or(0);
+        let score2 = item2
+            .and_then(|i| relevance_score(&i.title(), &i.value(), &query))
+            .unwrap_or(0);
 
         score2.cmp(&score1).into()
     })
-}
-
-fn relevance_score(item: &ItemObject, query: &str) -> Option<i32> {
-    let query_lower = query.to_lowercase();
-    let title_lower = item.title().to_lowercase();
-    let value_lower = item.value().to_lowercase();
-
-    if title_lower == query_lower {
-        Some(100)
-    } else if title_lower.starts_with(&query_lower) {
-        Some(60)
-    } else if title_lower.contains(&query_lower) {
-        Some(30)
-    } else if value_lower.contains(&query_lower) {
-        Some(20)
-    } else if fuzzy_match(&title_lower, &query_lower) {
-        Some(10)
-    } else {
-        None
-    }
 }
 
 fn build_factory(query_state: SearchState) -> SignalListItemFactory {
@@ -213,24 +198,6 @@ fn build_factory(query_state: SearchState) -> SignalListItemFactory {
     factory
 }
 
-fn fuzzy_match(text: &str, pattern: &str) -> bool {
-    let mut pattern_chars = pattern.chars();
-    let Some(mut expected) = pattern_chars.next() else {
-        return true;
-    };
-
-    for c in text.chars() {
-        if c == expected {
-            match pattern_chars.next() {
-                Some(next) => expected = next,
-                None => return true,
-            }
-        }
-    }
-
-    false
-}
-
 fn highlight_title(title: &str, query: &str) -> String {
     let title_lower = title.to_lowercase();
     let query_lower = query.to_lowercase();
@@ -268,4 +235,34 @@ fn highlight_title(title: &str, query: &str) -> String {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn highlight_exact_match() {
+        let result = highlight_title("Hello World", "Hello");
+        assert!(result.contains("Hello"));
+        assert!(result.contains("foreground"));
+    }
+
+    #[test]
+    fn highlight_case_insensitive() {
+        let result = highlight_title("Hello World", "hello");
+        assert!(result.contains("Hello"));
+    }
+
+    #[test]
+    fn highlight_no_match() {
+        let result = highlight_title("Hello World", "xyz");
+        assert!(!result.contains("foreground"));
+    }
+
+    #[test]
+    fn highlight_fuzzy() {
+        let result = highlight_title("fobar", "fo");
+        assert!(result.contains("<span"));
+    }
 }
