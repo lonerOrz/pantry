@@ -113,9 +113,7 @@ impl ItemProcessor {
         let sanitized_stdout = raw_stdout.replace('\0', "");
 
         let mut items = Vec::new();
-        let template = preview_template
-            .is_empty()
-            .then(|| preview_template.to_string());
+        let template = (!preview_template.is_empty()).then(|| preview_template.to_string());
 
         for line in sanitized_stdout.lines() {
             let line = line.trim();
