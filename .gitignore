@@ -2,3 +2,10 @@ target
 result
 AGENTS.md
 .sediment/
+
+# Nix
+.envrc
+.direnv/
+result/
+result
+result-*
