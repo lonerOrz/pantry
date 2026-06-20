@@ -9,7 +9,7 @@ pub fn load_items(
 ) -> Result<Vec<Item>, String> {
     let config = parse_config(config_path)?;
     let items = collect_items(&config, category_filter, display_arg);
-    Ok(crate::services::ItemService::process_items_for_display(
+    Ok(crate::services::item_service::process_items_for_display(
         items,
     ))
 }

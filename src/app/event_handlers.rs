@@ -56,7 +56,8 @@ pub fn handle_selection(list_state: &ListState) {
         return;
     };
 
-    crate::services::OutputService::write_output(&item);
+    print!("{}", item.value);
+    let _ = std::io::Write::flush(&mut std::io::stdout());
 
     if let Some(window) = list_state.view.root().and_downcast::<ApplicationWindow>() {
         let (width, height) = window.default_size();

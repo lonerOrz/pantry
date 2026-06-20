@@ -87,7 +87,7 @@ impl UiBuilder {
                 query.clear();
                 query.push_str(&entry.text());
             }
-            crate::app::search_logic::SearchLogic::refresh_filter(&list_state_clone);
+            list_state_clone.refresh_filter();
             list_state_clone.select_first();
             crate::app::preview_manager::PreviewManager::update_preview(
                 &list_state_clone,
@@ -221,7 +221,7 @@ impl UiBuilder {
                 query.clear();
                 query.push_str(&entry.text());
             }
-            crate::app::search_logic::SearchLogic::refresh_filter(&list_state_clone);
+            list_state_clone.refresh_filter();
             list_state_clone.select_first();
             crate::app::preview_manager::PreviewManager::update_preview(
                 &list_state_clone,

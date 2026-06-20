@@ -158,8 +158,8 @@ impl PantryApp {
                 }
             };
 
-            crate::services::ItemService::add_items_to_list(&list_state, &processed_items);
-            crate::services::ItemService::select_first_item(&list_state);
+            list_state.append_items(&processed_items);
+            list_state.select_first();
 
             glib::timeout_add_local(
                 std::time::Duration::from_millis(crate::constants::INITIAL_PREVIEW_DELAY_MS),
