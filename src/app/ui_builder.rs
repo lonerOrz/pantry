@@ -11,13 +11,21 @@ use crate::domain::{DisplayMode, SourceMode};
 use crate::ui::{header, list::ListState, preview, window};
 use crate::window_state::WindowState;
 
+use crate::app::preview_manager::PreviewManager;
+use crate::services::preview::{CacheAdapter, CommandExecutor, ImageDecoder};
+
 pub struct UiBuilder;
 
 impl UiBuilder {
-    pub fn build_stdin_ui(
+    pub fn build_stdin_ui<
+        C: CacheAdapter + Clone + 'static,
+        E: CommandExecutor + Clone + 'static,
+        D: ImageDecoder + Clone + 'static,
+    >(
         window_state: &WindowState,
         app: &Application,
         query_state: crate::ui::search::SearchState,
+        preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
     ) -> (
         ApplicationWindow,
         ListState,
@@ -49,6 +57,7 @@ impl UiBuilder {
             &list_state,
             &query_state,
             &preview_area_rc_opt,
+            preview_manager,
         );
 
         let (tx, rx) = std::sync::mpsc::channel::<String>();
@@ -99,16 +108,22 @@ impl UiBuilder {
             &list_state,
             &preview_area_rc_opt,
             display_mode,
+            preview_manager,
         );
 
         (window, list_state, preview_area_rc_opt, search_entry)
     }
 
-    pub fn build_config_ui(
+    pub fn build_config_ui<
+        C: CacheAdapter + Clone + 'static,
+        E: CommandExecutor + Clone + 'static,
+        D: ImageDecoder + Clone + 'static,
+    >(
         window_state: &WindowState,
         app: &Application,
         query_state: crate::ui::search::SearchState,
         display_mode: DisplayMode,
+        preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
     ) -> (
         ApplicationWindow,
         ListState,
@@ -144,6 +159,7 @@ impl UiBuilder {
             &list_state,
             &query_state,
             &preview_area_rc_opt,
+            preview_manager,
         );
 
         setup_preview_updates(
@@ -152,6 +168,7 @@ impl UiBuilder {
             &list_state,
             &preview_area_rc_opt,
             display_mode,
+            preview_manager,
         );
 
         (window, list_state, preview_area_rc_opt, search_entry)
@@ -252,12 +269,17 @@ fn build_content(
     }
 }
 
-fn setup_preview_updates(
+fn setup_preview_updates<
+    C: CacheAdapter + Clone + 'static,
+    E: CommandExecutor + Clone + 'static,
+    D: ImageDecoder + Clone + 'static,
+>(
     window: &ApplicationWindow,
     main_widget: &gtk4::Widget,
     list_state: &ListState,
     preview_area_rc_opt: &Option<Rc<RefCell<preview::PreviewArea>>>,
     display_mode: DisplayMode,
+    preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
 ) {
     if !matches!(display_mode, DisplayMode::Picture) {
         return;
@@ -266,6 +288,8 @@ fn setup_preview_updates(
     let preview_area_rc_opt_clone1 = preview_area_rc_opt.clone();
     let preview_area_rc_opt_clone2 = preview_area_rc_opt.clone();
     let list_state_clone = list_state.clone();
+    let preview_manager_clone1 = preview_manager.clone();
+    let preview_manager_clone2 = preview_manager.clone();
 
     let active_timeout_id = Rc::new(RefCell::new(None::<glib::SourceId>));
 
@@ -275,6 +299,7 @@ fn setup_preview_updates(
             let preview_area_rc_opt_inner = preview_area_rc_opt_clone1.clone();
             let list_state_inner = list_state_clone.clone();
             let active_timeout_id_inner = active_timeout_id.clone();
+            let preview_manager_inner = preview_manager_clone1.clone();
 
             if let Some(old_id) = active_timeout_id_inner.borrow_mut().take() {
                 old_id.remove();
@@ -285,10 +310,9 @@ fn setup_preview_updates(
                 move || {
                     active_timeout_id_inner.borrow_mut().take();
 
-                    crate::app::preview_manager::PreviewManager::update_preview(
-                        &list_state_inner,
-                        &preview_area_rc_opt_inner,
-                    );
+                    preview_manager_inner
+                        .borrow()
+                        .update_preview(&list_state_inner, &preview_area_rc_opt_inner);
                     glib::ControlFlow::Break
                 },
             );
@@ -301,10 +325,9 @@ fn setup_preview_updates(
         {
             let list_state_clone = list_state.clone();
             move || {
-                crate::app::preview_manager::PreviewManager::update_preview(
-                    &list_state_clone,
-                    &preview_area_rc_opt_clone2,
-                );
+                preview_manager_clone2
+                    .borrow()
+                    .update_preview(&list_state_clone, &preview_area_rc_opt_clone2);
                 glib::ControlFlow::Break
             }
         },

@@ -3,7 +3,10 @@ use gtk4::{Application, gio, prelude::*};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::app::{event_handlers::EventHandler, ui_builder::UiBuilder};
+use crate::app::{
+    event_handlers::EventHandler, preview_manager::PreviewManager, ui_builder::UiBuilder,
+};
+use crate::services::preview::create_prod_preview_service;
 use crate::ui::list::ListState;
 use crate::window_state::WindowState;
 
@@ -60,12 +63,21 @@ impl PantryApp {
     }
 
     fn build_ui(&self, app: &Application) {
+        let preview_manager = Rc::new(RefCell::new(PreviewManager::new(
+            create_prod_preview_service(),
+        )));
+
         match &self.input_mode {
             InputMode::Stdin => {
                 let search_query: crate::ui::search::SearchState =
                     Rc::new(RefCell::new(String::new()));
                 let (window, list_state, preview_area_rc_opt, search_entry) =
-                    UiBuilder::build_stdin_ui(&self.window_state, app, search_query.clone());
+                    UiBuilder::build_stdin_ui(
+                        &self.window_state,
+                        app,
+                        search_query.clone(),
+                        &preview_manager,
+                    );
 
                 EventHandler::setup_keyboard_controller(
                     &window,
@@ -91,6 +103,7 @@ impl PantryApp {
                         app,
                         search_query.clone(),
                         display_mode,
+                        &preview_manager,
                     );
 
                 EventHandler::setup_keyboard_controller(
@@ -106,6 +119,7 @@ impl PantryApp {
                     &self.args.category,
                     &self.args.display,
                     preview_area_rc_opt.clone(),
+                    &preview_manager,
                 );
 
                 window.present();
@@ -123,12 +137,22 @@ impl PantryApp {
         preview_area_rc_opt: Option<
             std::rc::Rc<std::cell::RefCell<crate::ui::preview::PreviewArea>>,
         >,
+        preview_manager: &Rc<
+            RefCell<
+                PreviewManager<
+                    crate::cache::CacheManager,
+                    crate::services::preview::ShellExec,
+                    crate::services::preview::GdkPixbufDecoder,
+                >,
+            >,
+        >,
     ) {
         let config_path = config_path.to_string();
         let category_filter = category_filter.clone();
         let display_arg = display_arg.clone();
         let list_state = list_state.clone();
         let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
+        let preview_manager_clone = preview_manager.clone();
 
         glib::spawn_future_local(async move {
             let load_result = gio::spawn_blocking(move || {
@@ -173,10 +197,9 @@ impl PantryApp {
                     let list_state_clone = list_state.clone();
                     let preview_area_rc_opt_clone = preview_area_rc_opt_clone.clone();
                     move || {
-                        crate::app::preview_manager::PreviewManager::update_preview(
-                            &list_state_clone,
-                            &preview_area_rc_opt_clone,
-                        );
+                        preview_manager_clone
+                            .borrow()
+                            .update_preview(&list_state_clone, &preview_area_rc_opt_clone);
                         glib::ControlFlow::Break
                     }
                 },

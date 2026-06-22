@@ -4,6 +4,8 @@ use crate::app::preview_manager::PreviewManager;
 use crate::ui::list::ListState;
 use crate::ui::preview;
 
+use crate::services::preview::{CacheAdapter, CommandExecutor, ImageDecoder};
+
 pub fn build_header_bar() -> (HeaderBar, SearchEntry, Button) {
     let header_bar = HeaderBar::new();
     header_bar.set_show_title_buttons(true);
@@ -45,15 +47,21 @@ pub fn connect_about_dialog(window: &ApplicationWindow, menu_button: &Button) {
     });
 }
 
-pub fn connect_search_changed(
+pub fn connect_search_changed<
+    C: CacheAdapter + Clone + 'static,
+    E: CommandExecutor + Clone + 'static,
+    D: ImageDecoder + Clone + 'static,
+>(
     search_entry: &SearchEntry,
     list_state: &ListState,
     query_state: &crate::ui::search::SearchState,
     preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>,
+    preview_manager: &std::rc::Rc<std::cell::RefCell<PreviewManager<C, E, D>>>,
 ) {
     let list_state_clone = list_state.clone();
     let query_state_clone = query_state.clone();
     let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
+    let preview_manager_clone = preview_manager.clone();
 
     search_entry.connect_search_changed(move |entry| {
         {
@@ -63,6 +71,8 @@ pub fn connect_search_changed(
         }
         list_state_clone.refresh_filter();
         list_state_clone.select_first();
-        PreviewManager::update_preview(&list_state_clone, &preview_area_rc_opt_clone);
+        preview_manager_clone
+            .borrow()
+            .update_preview(&list_state_clone, &preview_area_rc_opt_clone);
     });
 }

@@ -1,7 +1,7 @@
 use std::io;
 use std::time::Duration;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CommandOutput {
     pub success: bool,
     pub stdout: Vec<u8>,
@@ -17,6 +17,7 @@ pub trait CommandExecutor: Send + Sync {
     ) -> io::Result<CommandOutput>;
 }
 
+#[derive(Clone)]
 pub struct ShellExec;
 
 impl CommandExecutor for ShellExec {
@@ -73,14 +74,23 @@ impl CommandExecutor for ShellExec {
 
 #[cfg(test)]
 pub struct MockExec {
-    responses: std::sync::Mutex<Vec<io::Result<CommandOutput>>>,
+    responses: std::sync::Arc<std::sync::Mutex<Vec<io::Result<CommandOutput>>>>,
+}
+
+#[cfg(test)]
+impl Clone for MockExec {
+    fn clone(&self) -> Self {
+        Self {
+            responses: std::sync::Arc::clone(&self.responses),
+        }
+    }
 }
 
 #[cfg(test)]
 impl MockExec {
     pub fn new() -> Self {
         Self {
-            responses: std::sync::Mutex::new(Vec::new()),
+            responses: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 

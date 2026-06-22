@@ -1,18 +1,52 @@
-use crate::services::preview::{PreviewPayload, ProdPreviewService, create_prod_preview_service};
+use crate::services::preview::{PreviewPayload, PreviewService};
 use crate::ui::list::ListState;
 use crate::ui::preview::PreviewArea;
 use gtk4::{gio, glib};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicU64, Ordering};
 
-static PREVIEW_SERVICE: OnceLock<ProdPreviewService> = OnceLock::new();
+use crate::services::preview::{CacheAdapter, CommandExecutor, ImageDecoder};
 
-pub struct PreviewManager;
+pub struct PreviewManager<
+    C: CacheAdapter + Clone,
+    E: CommandExecutor + Clone,
+    D: ImageDecoder + Clone,
+> {
+    service: PreviewService<C, E, D>,
+    next_task_id: Cell<u64>,
+    active_task_id: Cell<u64>,
+}
+impl<
+    C: CacheAdapter + Clone + 'static,
+    E: CommandExecutor + Clone + 'static,
+    D: ImageDecoder + Clone + 'static,
+> Clone for PreviewManager<C, E, D>
+{
+    fn clone(&self) -> Self {
+        Self {
+            service: self.service.clone(),
+            next_task_id: Cell::new(self.next_task_id.get()),
+            active_task_id: Cell::new(self.active_task_id.get()),
+        }
+    }
+}
 
-impl PreviewManager {
+impl<
+    C: CacheAdapter + Clone + 'static,
+    E: CommandExecutor + Clone + 'static,
+    D: ImageDecoder + Clone + 'static,
+> PreviewManager<C, E, D>
+{
+    pub fn new(service: PreviewService<C, E, D>) -> Self {
+        Self {
+            service,
+            next_task_id: Cell::new(1),
+            active_task_id: Cell::new(0),
+        }
+    }
+
     pub fn update_preview(
+        &self,
         list_state: &ListState,
         preview_area_rc_opt: &Option<Rc<RefCell<PreviewArea>>>,
     ) {
@@ -23,20 +57,17 @@ impl PreviewManager {
             return;
         };
 
-        let service = PREVIEW_SERVICE.get_or_init(create_prod_preview_service);
-
-        if let Some(cached) = service.try_cache(&item) {
+        if let Some(cached) = self.service.try_cache(&item) {
             preview_area_rc.borrow().render(cached, &item);
             return;
         }
 
-        static NEXT_TASK_ID: OnceLock<AtomicU64> = OnceLock::new();
-        static ACTIVE_TASK_ID: OnceLock<AtomicU64> = OnceLock::new();
-        let next_id = NEXT_TASK_ID.get_or_init(|| AtomicU64::new(1));
-        let active_id = ACTIVE_TASK_ID.get_or_init(|| AtomicU64::new(0));
+        let task_id = self.next_task_id.get();
+        self.next_task_id.set(task_id + 1);
+        self.active_task_id.set(task_id);
 
-        let task_id = next_id.fetch_add(1, Ordering::SeqCst);
-        active_id.store(task_id, Ordering::SeqCst);
+        let service = self.service.clone();
+        let active_task_id = self.active_task_id.clone();
 
         preview_area_rc
             .borrow()
@@ -46,14 +77,14 @@ impl PreviewManager {
         let item_clone = item.clone();
 
         glib::spawn_future_local(async move {
-            if active_id.load(Ordering::SeqCst) != task_id {
+            if active_task_id.get() != task_id {
                 return;
             }
 
             let payload_result =
                 gio::spawn_blocking(move || service.resolve_payload(&item_clone)).await;
 
-            if active_id.load(Ordering::SeqCst) != task_id {
+            if active_task_id.get() != task_id {
                 return;
             }
 

@@ -67,6 +67,7 @@ impl CacheAdapter for CacheManager {
     }
 }
 
+#[derive(Clone)]
 pub struct GdkPixbufDecoder;
 
 impl ImageDecoder for GdkPixbufDecoder {
@@ -98,13 +99,20 @@ pub fn create_prod_preview_service() -> ProdPreviewService {
     )
 }
 
-pub struct PreviewService<C: CacheAdapter, E: CommandExecutor, D: ImageDecoder> {
+#[derive(Clone)]
+pub struct PreviewService<
+    C: CacheAdapter + Clone,
+    E: CommandExecutor + Clone,
+    D: ImageDecoder + Clone,
+> {
     cache: C,
     executor: E,
     decoder: D,
 }
 
-impl<C: CacheAdapter, E: CommandExecutor, D: ImageDecoder> PreviewService<C, E, D> {
+impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clone>
+    PreviewService<C, E, D>
+{
     pub fn new(cache: C, executor: E, decoder: D) -> Self {
         Self {
             cache,
@@ -492,6 +500,15 @@ mod tests {
         stored: RwLock<HashMap<PathBuf, CacheEntry>>,
     }
 
+    impl Clone for MockCache {
+        fn clone(&self) -> Self {
+            Self {
+                valid_entries: self.valid_entries.clone(),
+                stored: RwLock::new(self.stored.read().unwrap().clone()),
+            }
+        }
+    }
+
     impl MockCache {
         fn new() -> Self {
             Self {
@@ -545,6 +562,7 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
     struct MockDecoder {
         result: Option<(Vec<u8>, i32, i32)>,
     }

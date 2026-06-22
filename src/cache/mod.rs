@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
+#[derive(Clone)]
 pub struct CacheManager {
     cache_dir: PathBuf,
 }
