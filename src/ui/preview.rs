@@ -8,21 +8,35 @@ use gtk4::{Align, Grid, Label, Picture, ScrolledWindow, TextView};
 pub struct PreviewArea {
     pub container: Grid,
     content_scrolled: ScrolledWindow,
-    details_label: Label,
+    title_label: Label,
+    category_label: Label,
+    path_label: Label,
     details_scrolled: ScrolledWindow,
 }
 
 impl PreviewArea {
     pub fn new() -> Self {
-        let details_label = Label::new(Some("No image selected"));
-        details_label.set_wrap(true);
-        details_label.set_halign(Align::Start);
-        details_label.set_valign(Align::Start);
-        details_label.set_ellipsize(gtk4::pango::EllipsizeMode::None);
-        details_label.add_css_class("preview-details-label");
+        let title_label = Label::new(None);
+        title_label.set_halign(Align::Start);
+        title_label.add_css_class("preview-title");
+
+        let category_label = Label::new(None);
+        category_label.set_halign(Align::Start);
+        category_label.add_css_class("preview-category");
+
+        let path_label = Label::new(None);
+        path_label.set_halign(Align::Start);
+        path_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+        path_label.add_css_class("preview-path");
+
+        let details_box = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+        details_box.append(&title_label);
+        details_box.append(&category_label);
+        details_box.append(&path_label);
+        details_box.add_css_class("preview-details-box");
 
         let details_scrolled = ScrolledWindow::new();
-        details_scrolled.set_child(Some(&details_label));
+        details_scrolled.set_child(Some(&details_box));
         details_scrolled.set_vexpand(false);
         details_scrolled.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
         details_scrolled.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
@@ -52,7 +66,9 @@ impl PreviewArea {
         Self {
             container,
             content_scrolled,
-            details_label,
+            title_label,
+            category_label,
+            path_label,
             details_scrolled,
         }
     }
@@ -60,13 +76,11 @@ impl PreviewArea {
     pub fn render(&self, payload: PreviewPayload, item: &Item) {
         if item.is_picture_mode() {
             self.details_scrolled.set_visible(true);
-            let details_text = format!(
-                "<b>Title:</b> {}\n<b>Category:</b> {}\n<b>Path:</b> {}",
-                glib::markup_escape_text(&item.title),
-                glib::markup_escape_text(&item.category),
-                glib::markup_escape_text(&item.value)
-            );
-            self.details_label.set_markup(&details_text);
+            self.title_label
+                .set_markup(&format!("<b>{}</b>", glib::markup_escape_text(&item.title)));
+            self.category_label
+                .set_text(&format!("Category: {}", item.category));
+            self.path_label.set_text(&format!("Path: {}", item.value));
         } else {
             self.details_scrolled.set_visible(false);
         }

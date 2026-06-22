@@ -205,15 +205,28 @@ paned > separator {
   margin: 8px 12px;
 }
 
-.preview-details-label {
-  color: @text_dim;
-  padding: 8px 12px;
-  font-size: 0.82em;
+.preview-details-box {
+  padding: 12px;
 }
 
-.preview-details-label b {
+.preview-title {
+  font-size: 1.1em;
+  font-weight: 700;
   color: @text;
-  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.preview-category {
+  font-size: 0.85em;
+  color: @text_dim;
+  font-style: italic;
+}
+
+.preview-path {
+  font-family: monospace;
+  font-size: 0.8em;
+  color: @text_dim;
+  margin-top: 4px;
 }
 
 .aboutdialog {
