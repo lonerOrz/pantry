@@ -139,10 +139,11 @@ fn build_factory(query_state: SearchState) -> SignalListItemFactory {
         title_label.set_xalign(0.0);
         title_label.set_use_markup(true);
         title_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+        title_label.add_css_class("bookmark-title");
 
         let value_label = Label::new(None);
         value_label.set_xalign(0.0);
-        value_label.add_css_class("dim-label");
+        value_label.add_css_class("bookmark-value");
         value_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
         value_label.set_single_line_mode(true);
 

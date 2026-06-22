@@ -61,17 +61,16 @@ listview row:focus-within .bookmark-row {
   box-shadow: 0 0 0 1.5px alpha(@accent, 0.4);
 }
 
-.bookmark-row label:first-child {
-  font-size: 0.88em;
+.bookmark-title {
+  font-size: 0.95em;
   font-weight: 600;
   color: @text;
 }
 
-.dim-label {
-  font-size: 0.78em;
+.bookmark-value {
+  font-family: monospace;
+  font-size: 0.8em;
   color: @text_dim;
-  margin-top: 2px;
-  opacity: 0.7;
 }
 
 .empty-placeholder-box {
