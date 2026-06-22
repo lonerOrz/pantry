@@ -132,7 +132,13 @@ impl PantryApp {
 
         glib::spawn_future_local(async move {
             let load_result = gio::spawn_blocking(move || {
-                crate::services::loader::load_items(&config_path, &category_filter, &display_arg)
+                let config = crate::services::loader::parse_config(&config_path)?;
+                let processed_items = crate::services::pipeline::ItemPipeline::run(
+                    &config,
+                    &category_filter,
+                    &display_arg,
+                );
+                Ok::<Vec<crate::domain::item::Item>, String>(processed_items)
             })
             .await;
 

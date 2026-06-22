@@ -385,9 +385,11 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::RwLock;
 
+    type CacheEntry = (Vec<u8>, i32, i32);
+
     struct MockCache {
         valid_entries: HashMap<PathBuf, bool>,
-        stored: RwLock<HashMap<PathBuf, (Vec<u8>, i32, i32)>>,
+        stored: RwLock<HashMap<PathBuf, CacheEntry>>,
     }
 
     impl MockCache {

@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn mock_exec_returns_err() {
-        let mock = MockExec::new().push_err(io::Error::new(io::ErrorKind::Other, "fail"));
+        let mock = MockExec::new().push_err(io::Error::other("fail"));
         let result = mock.execute("sh", &["-c", "false"]);
         assert!(result.is_err());
     }
