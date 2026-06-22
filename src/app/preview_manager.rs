@@ -5,7 +5,8 @@ use gtk4::{gio, glib};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use crate::services::preview::{CacheAdapter, CommandExecutor, ImageDecoder};
+use crate::cache::CacheAdapter;
+use crate::services::preview::{CommandExecutor, ImageDecoder};
 
 pub struct PreviewManager<
     C: CacheAdapter + Clone,

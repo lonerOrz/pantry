@@ -12,7 +12,8 @@ use crate::ui::{header, list::ListState, preview, window};
 use crate::window_state::WindowState;
 
 use crate::app::preview_manager::PreviewManager;
-use crate::services::preview::{CacheAdapter, CommandExecutor, ImageDecoder};
+use crate::cache::CacheAdapter;
+use crate::services::preview::{CommandExecutor, ImageDecoder};
 
 pub struct UiBuilder;
 

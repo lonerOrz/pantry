@@ -4,7 +4,8 @@ use crate::app::preview_manager::PreviewManager;
 use crate::ui::list::ListState;
 use crate::ui::preview;
 
-use crate::services::preview::{CacheAdapter, CommandExecutor, ImageDecoder};
+use crate::cache::CacheAdapter;
+use crate::services::preview::{CommandExecutor, ImageDecoder};
 
 pub fn build_header_bar() -> (HeaderBar, SearchEntry, Button) {
     let header_bar = HeaderBar::new();

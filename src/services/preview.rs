@@ -1,9 +1,8 @@
-use crate::cache::CacheManager;
+use crate::cache::{CacheAdapter, CacheManager};
 use crate::domain::item::Item;
 use gdk_pixbuf::Pixbuf;
 use image::ImageReader;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -21,19 +20,6 @@ pub enum PreviewPayload {
 
 pub use crate::services::process::{CommandExecutor, ShellExec};
 
-pub trait CacheAdapter: Send + Sync {
-    fn get_cache_path(&self, category: &str, original_path: &Path) -> PathBuf;
-    fn is_cache_valid(&self, cache_path: &Path, original_path: &Path) -> bool;
-    fn save_raw_cache(
-        &self,
-        path: &Path,
-        raw_data: &[u8],
-        width: i32,
-        height: i32,
-    ) -> io::Result<()>;
-    fn load_raw_cache(&self, path: &Path) -> Option<(Vec<u8>, i32, i32)>;
-}
-
 pub trait ImageDecoder: Send + Sync {
     fn load_from_path(
         &self,
@@ -41,30 +27,6 @@ pub trait ImageDecoder: Send + Sync {
         max_width: i32,
         max_height: i32,
     ) -> Option<(Vec<u8>, i32, i32)>;
-}
-
-impl CacheAdapter for CacheManager {
-    fn get_cache_path(&self, category: &str, original_path: &Path) -> PathBuf {
-        self.get_cache_path(category, original_path)
-    }
-
-    fn is_cache_valid(&self, cache_path: &Path, original_path: &Path) -> bool {
-        self.is_cache_valid(cache_path, original_path)
-    }
-
-    fn save_raw_cache(
-        &self,
-        path: &Path,
-        raw_data: &[u8],
-        width: i32,
-        height: i32,
-    ) -> io::Result<()> {
-        self.save_raw_cache(path, raw_data, width, height)
-    }
-
-    fn load_raw_cache(&self, path: &Path) -> Option<(Vec<u8>, i32, i32)> {
-        self.load_raw_cache(path)
-    }
 }
 
 #[derive(Clone)]
@@ -491,6 +453,8 @@ mod tests {
     use crate::domain::{DisplayMode, SourceMode};
     use crate::services::process::MockExec;
     use std::collections::HashMap;
+    use std::io;
+    use std::path::PathBuf;
     use std::sync::RwLock;
 
     type CacheEntry = (Vec<u8>, i32, i32);
