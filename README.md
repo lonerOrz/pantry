@@ -84,21 +84,25 @@ Options:
 ## Examples
 
 Use with piped input:
+
 ```bash
 echo -e "Option 1\nOption 2\nOption 3" | pantry
 ```
 
 Force picture mode (use with image paths):
+
 ```bash
 pantry -f pictures.toml -d picture
 ```
 
 Force text mode (use with URLs or text):
+
 ```bash
 pantry -f bookmarks.toml -d text
 ```
 
 Use dynamic source mode for real-time command integration:
+
 ```toml
 # config.toml
 [cliphist]
@@ -110,6 +114,7 @@ source = "dynamic"
 ```
 
 Then run:
+
 ```bash
 pantry -f config.toml -c cliphist
 ```
@@ -118,13 +123,13 @@ In dynamic mode, the left side of entries specifies a command whose output popul
 
 ## Documentation
 
-For detailed usage instructions and examples, see our [Getting Started Guide](doc/start.md).
+For detailed usage instructions and examples, see our [Getting Started Guide](docs/examples/start.md).
 
 ## Configuration
 
 pantry uses TOML format configuration files with separate display and input modes. Each category can optionally specify its own modes, which will override the global defaults.
 
-For detailed configuration examples, see our [Getting Started Guide](doc/start.md) and example files in the [doc](doc/) directory.
+For detailed configuration examples, see our [Getting Started Guide](docs/examples/start.md) and example files in the [examples directory](docs/examples/).
 
 ## License
 
