@@ -90,6 +90,14 @@ impl ImageDecoder for GdkPixbufDecoder {
 
 pub type ProdPreviewService = PreviewService<CacheManager, ShellExec, GdkPixbufDecoder>;
 
+pub fn create_prod_preview_service() -> ProdPreviewService {
+    ProdPreviewService::new(
+        crate::cache::CacheManager::new(),
+        ShellExec,
+        GdkPixbufDecoder,
+    )
+}
+
 pub struct PreviewService<C: CacheAdapter, E: CommandExecutor, D: ImageDecoder> {
     cache: C,
     executor: E,
