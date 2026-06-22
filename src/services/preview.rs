@@ -120,99 +120,12 @@ impl<C: CacheAdapter, E: CommandExecutor, D: ImageDecoder> PreviewService<C, E, 
             return self.resolve_dynamic(item);
         }
 
+        use crate::services::preview_strategies::{ImagePreview, PreviewStrategy, TextPreview};
         match item.display {
-            crate::config::DisplayMode::Picture => self.resolve_picture(item),
-            crate::config::DisplayMode::Text => PreviewPayload::Text(item.value.clone()),
-        }
-    }
-
-    fn resolve_picture(&self, item: &Item) -> PreviewPayload {
-        let expanded_path = crate::utils::expand_tilde(&item.value);
-        if !expanded_path.exists() || !expanded_path.is_file() {
-            return PreviewPayload::Text(item.value.clone());
-        }
-
-        let cache_path = self.cache.get_cache_path(&item.category, &expanded_path);
-
-        if self.cache.is_cache_valid(&cache_path, &expanded_path)
-            && let Some((bytes, w, h)) = self.cache.load_raw_cache(&cache_path)
-        {
-            return PreviewPayload::Image {
-                bytes: Arc::new(bytes),
-                width: w,
-                height: h,
-            };
-        }
-
-        if is_video_file(&expanded_path) {
-            self.generate_video_thumbnail(&expanded_path, &cache_path)
-        } else {
-            self.generate_image_payload(&expanded_path, &cache_path)
-        }
-    }
-
-    fn generate_image_payload(&self, path: &Path, cache_path: &Path) -> PreviewPayload {
-        let max_w = crate::constants::IMAGE_PREVIEW_WIDTH;
-        let max_h = crate::constants::IMAGE_PREVIEW_HEIGHT;
-
-        if let Some((bytes, w, h)) = self.decoder.load_from_path(path, max_w, max_h) {
-            let _ = self.cache.save_raw_cache(cache_path, &bytes, w, h);
-            PreviewPayload::Image {
-                bytes: Arc::new(bytes),
-                width: w,
-                height: h,
+            crate::config::DisplayMode::Picture => {
+                ImagePreview::new(&self.cache, &self.executor, &self.decoder).resolve(item)
             }
-        } else {
-            PreviewPayload::Error("Failed to decode image".to_string())
-        }
-    }
-
-    fn generate_video_thumbnail(&self, video_path: &Path, cache_path: &Path) -> PreviewPayload {
-        let video_stem = match video_path.file_stem().and_then(|s| s.to_str()) {
-            Some(s) => s,
-            None => return PreviewPayload::Error("Invalid video filename".to_string()),
-        };
-
-        let temp_png = cache_path.with_file_name(format!("{}_thumb_temp.png", video_stem));
-
-        let video_str = video_path.to_string_lossy();
-        let temp_str = temp_png.to_string_lossy();
-        let args: [&str; 14] = [
-            "-y",
-            "-ss",
-            "1",
-            "-i",
-            &video_str,
-            "-vframes",
-            "1",
-            "-vf",
-            "scale=800:-1",
-            "-preset",
-            "ultrafast",
-            "-q:v",
-            "5",
-            &temp_str,
-        ];
-
-        match self.executor.execute("ffmpeg", &args) {
-            Ok(output) if output.success => {
-                if let Some((raw_data, w, h)) = self.decoder.load_from_path(&temp_png, 800, 600) {
-                    let _ = self.cache.save_raw_cache(cache_path, &raw_data, w, h);
-                    let _ = std::fs::remove_file(&temp_png);
-                    PreviewPayload::Image {
-                        bytes: Arc::new(raw_data),
-                        width: w,
-                        height: h,
-                    }
-                } else {
-                    let _ = std::fs::remove_file(&temp_png);
-                    PreviewPayload::Error("Failed to decode video thumbnail".to_string())
-                }
-            }
-            _ => {
-                let _ = std::fs::remove_file(&temp_png);
-                PreviewPayload::Error("FFmpeg execution failed".to_string())
-            }
+            crate::config::DisplayMode::Text => TextPreview.resolve(item),
         }
     }
 
@@ -268,8 +181,7 @@ impl<C: CacheAdapter, E: CommandExecutor, D: ImageDecoder> PreviewService<C, E, 
         }
     }
 }
-
-fn is_video_file(path: &Path) -> bool {
+pub(crate) fn is_video_file(path: &Path) -> bool {
     match path.extension().and_then(|s| s.to_str()) {
         Some(ext) => matches!(
             ext.to_lowercase().as_str(),
