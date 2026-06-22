@@ -215,7 +215,7 @@ mod tests {
 
         fs::write(
             &path,
-            &[
+            [
                 10, 0, 0, 0, // width = 10
                 10, 0, 0,
                 0, // height = 10
@@ -235,7 +235,7 @@ mod tests {
 
         fs::write(
             &path,
-            &[
+            [
                 0, 0, 0, 0, // width = 0 (invalid)
                 10, 0, 0, 0, 0, 0, 0, 0,
             ],
