@@ -4,7 +4,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::app::{
-    event_handlers::EventHandler, preview_manager::PreviewManager, ui_builder::UiBuilder,
+    event_handlers::EventHandler,
+    preview_manager::PreviewManager,
+    ui_builder::{UiBuilder, UiMode},
 };
 use crate::services::preview::create_prod_preview_service;
 use crate::ui::list::ListState;
@@ -67,65 +69,48 @@ impl PantryApp {
             create_prod_preview_service(),
         )));
 
-        match &self.input_mode {
-            InputMode::Stdin => {
-                let search_query: crate::ui::search::SearchState =
-                    Rc::new(RefCell::new(String::new()));
-                let (window, list_state, preview_area_rc_opt, search_entry) =
-                    UiBuilder::build_stdin_ui(
-                        &self.window_state,
-                        app,
-                        search_query.clone(),
-                        &preview_manager,
-                    );
+        let search_query: crate::ui::search::SearchState = Rc::new(RefCell::new(String::new()));
 
-                EventHandler::setup_keyboard_controller(
-                    &window,
-                    &list_state,
-                    &search_entry,
-                    preview_area_rc_opt.clone(),
-                );
-
-                window.present();
-                search_entry.grab_focus();
-            }
+        let mode = match &self.input_mode {
+            InputMode::Stdin => UiMode::Stdin,
             InputMode::Config => {
-                let search_query: crate::ui::search::SearchState =
-                    Rc::new(RefCell::new(String::new()));
                 let display_mode = crate::config::get_config_display_mode(
                     &self.args.config,
                     &self.args.category,
                     &self.args.display,
                 );
-                let (window, list_state, preview_area_rc_opt, search_entry) =
-                    UiBuilder::build_config_ui(
-                        &self.window_state,
-                        app,
-                        search_query.clone(),
-                        display_mode,
-                        &preview_manager,
-                    );
-
-                EventHandler::setup_keyboard_controller(
-                    &window,
-                    &list_state,
-                    &search_entry,
-                    preview_area_rc_opt.clone(),
-                );
-
-                self.load_items_from_config(
-                    &list_state,
-                    &self.args.config,
-                    &self.args.category,
-                    &self.args.display,
-                    preview_area_rc_opt.clone(),
-                    &preview_manager,
-                );
-
-                window.present();
-                search_entry.grab_focus();
+                UiMode::Config { display_mode }
             }
+        };
+
+        let (window, list_state, preview_area_rc_opt, search_entry) = UiBuilder::build_ui(
+            &self.window_state,
+            app,
+            search_query.clone(),
+            mode,
+            &preview_manager,
+        );
+
+        EventHandler::setup_keyboard_controller(
+            &window,
+            &list_state,
+            &search_entry,
+            preview_area_rc_opt.clone(),
+        );
+
+        if matches!(self.input_mode, InputMode::Config) {
+            self.load_items_from_config(
+                &list_state,
+                &self.args.config,
+                &self.args.category,
+                &self.args.display,
+                preview_area_rc_opt.clone(),
+                &preview_manager,
+            );
         }
+
+        window.present();
+        search_entry.grab_focus();
     }
 
     fn load_items_from_config(

@@ -15,10 +15,15 @@ use crate::app::preview_manager::PreviewManager;
 use crate::cache::CacheAdapter;
 use crate::services::preview::{CommandExecutor, ImageDecoder};
 
+pub enum UiMode {
+    Stdin,
+    Config { display_mode: DisplayMode },
+}
+
 pub struct UiBuilder;
 
 impl UiBuilder {
-    pub fn build_stdin_ui<
+    pub fn build_ui<
         C: CacheAdapter + Clone + 'static,
         E: CommandExecutor + Clone + 'static,
         D: ImageDecoder + Clone + 'static,
@@ -26,6 +31,7 @@ impl UiBuilder {
         window_state: &WindowState,
         app: &Application,
         query_state: crate::ui::search::SearchState,
+        mode: UiMode,
         preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
     ) -> (
         ApplicationWindow,
@@ -33,135 +39,29 @@ impl UiBuilder {
         Option<Rc<RefCell<preview::PreviewArea>>>,
         SearchEntry,
     ) {
-        let window = window::create_main_window(app);
-        window.set_default_size(window_state.width, window_state.height);
+        let display_mode = match &mode {
+            UiMode::Stdin => DisplayMode::Text,
+            UiMode::Config { display_mode } => display_mode.clone(),
+        };
 
-        let display_mode = DisplayMode::Text;
-        let list_state = ListState::new(query_state.clone());
-        let (main_widget, preview_area_rc_opt) =
-            build_main_widget(&list_state, display_mode.clone());
-
-        let (header_bar, search_entry, menu_button) = header::build_header_bar();
-        header::connect_about_dialog(&window, &menu_button);
-
-        let frame_wrapper = GtkBox::new(Orientation::Vertical, 0);
-        frame_wrapper.add_css_class("pantry-main-frame");
-        frame_wrapper.append(&header_bar);
-        frame_wrapper.append(&main_widget);
-
-        window.set_child(Some(&frame_wrapper));
-
-        search_entry.set_key_capture_widget(Some(&window));
-
-        header::connect_search_changed(
-            &search_entry,
-            &list_state,
+        let (window, list_state, preview_area_rc_opt, search_entry, main_widget) = build_ui_shell(
+            window_state,
+            app,
             &query_state,
-            &preview_area_rc_opt,
+            &display_mode,
             preview_manager,
         );
 
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
-
-        std::thread::spawn(move || {
-            use std::io::BufRead;
-            let stdin = std::io::stdin();
-            let reader = stdin.lock();
-            for line in reader.lines().map_while(Result::ok) {
-                if !line.trim().is_empty() {
-                    let _ = tx.send(line);
-                }
-            }
-        });
-
-        let list_state_clone = list_state.clone();
-        let display_mode_clone = display_mode.clone();
-        let mut stdin_count: usize = 0;
-
-        glib::idle_add_local(move || {
-            while let Ok(line) = rx.try_recv() {
-                list_state_clone.append_item(Item {
-                    title: line.to_string(),
-                    value: line.to_string(),
-                    category: "stdin".to_string(),
-                    display: display_mode_clone.clone(),
-                    source: SourceMode::Config,
-                    preview_template: None,
-                });
-
-                stdin_count += 1;
-                if stdin_count >= MAX_ITEMS {
-                    return glib::ControlFlow::Break;
-                }
-
-                if list_state_clone.selection.selected() == gtk4::INVALID_LIST_POSITION {
-                    list_state_clone.select_first();
-                }
-            }
-            glib::ControlFlow::Continue
-        });
-
-        list_state.view.grab_focus();
-
-        setup_preview_updates(
-            &window,
-            &main_widget,
-            &list_state,
-            &preview_area_rc_opt,
-            display_mode,
-            preview_manager,
-        );
-
-        (window, list_state, preview_area_rc_opt, search_entry)
-    }
-
-    pub fn build_config_ui<
-        C: CacheAdapter + Clone + 'static,
-        E: CommandExecutor + Clone + 'static,
-        D: ImageDecoder + Clone + 'static,
-    >(
-        window_state: &WindowState,
-        app: &Application,
-        query_state: crate::ui::search::SearchState,
-        display_mode: DisplayMode,
-        preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
-    ) -> (
-        ApplicationWindow,
-        ListState,
-        Option<Rc<RefCell<preview::PreviewArea>>>,
-        SearchEntry,
-    ) {
-        let window = window::create_main_window(app);
-        window.set_default_size(window_state.width, window_state.height);
-
-        if window_state.maximized {
+        if matches!(mode, UiMode::Config { .. }) && window_state.maximized {
             window.maximize();
         }
-        let list_state = ListState::new(query_state.clone());
-        let (main_widget, preview_area_rc_opt) =
-            build_main_widget(&list_state, display_mode.clone());
 
-        let (header_bar, search_entry, menu_button) = header::build_header_bar();
-        header::connect_about_dialog(&window, &menu_button);
-
-        let frame_wrapper = GtkBox::new(Orientation::Vertical, 0);
-        frame_wrapper.add_css_class("pantry-main-frame");
-        frame_wrapper.append(&header_bar);
-        frame_wrapper.append(&main_widget);
-
-        window.set_child(Some(&frame_wrapper));
-
-        search_entry.set_key_capture_widget(Some(&window));
+        match mode {
+            UiMode::Stdin => spawn_stdin_reader(&list_state, &display_mode),
+            UiMode::Config { .. } => {}
+        }
 
         list_state.view.grab_focus();
-
-        header::connect_search_changed(
-            &search_entry,
-            &list_state,
-            &query_state,
-            &preview_area_rc_opt,
-            preview_manager,
-        );
 
         setup_preview_updates(
             &window,
@@ -174,6 +74,100 @@ impl UiBuilder {
 
         (window, list_state, preview_area_rc_opt, search_entry)
     }
+}
+
+fn build_ui_shell<
+    C: CacheAdapter + Clone + 'static,
+    E: CommandExecutor + Clone + 'static,
+    D: ImageDecoder + Clone + 'static,
+>(
+    window_state: &WindowState,
+    app: &Application,
+    query_state: &crate::ui::search::SearchState,
+    display_mode: &DisplayMode,
+    preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
+) -> (
+    ApplicationWindow,
+    ListState,
+    Option<Rc<RefCell<preview::PreviewArea>>>,
+    SearchEntry,
+    gtk4::Widget,
+) {
+    let window = window::create_main_window(app);
+    window.set_default_size(window_state.width, window_state.height);
+
+    let list_state = ListState::new(query_state.clone());
+    let (main_widget, preview_area_rc_opt) = build_main_widget(&list_state, display_mode.clone());
+
+    let (header_bar, search_entry, menu_button) = header::build_header_bar();
+    header::connect_about_dialog(&window, &menu_button);
+
+    let frame_wrapper = GtkBox::new(Orientation::Vertical, 0);
+    frame_wrapper.add_css_class("pantry-main-frame");
+    frame_wrapper.append(&header_bar);
+    frame_wrapper.append(&main_widget);
+
+    window.set_child(Some(&frame_wrapper));
+
+    search_entry.set_key_capture_widget(Some(&window));
+
+    header::connect_search_changed(
+        &search_entry,
+        &list_state,
+        query_state,
+        &preview_area_rc_opt,
+        preview_manager,
+    );
+
+    (
+        window,
+        list_state,
+        preview_area_rc_opt,
+        search_entry,
+        main_widget,
+    )
+}
+
+fn spawn_stdin_reader(list_state: &ListState, display_mode: &DisplayMode) {
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        let stdin = std::io::stdin();
+        let reader = stdin.lock();
+        for line in reader.lines().map_while(Result::ok) {
+            if !line.trim().is_empty() {
+                let _ = tx.send(line);
+            }
+        }
+    });
+
+    let list_state_clone = list_state.clone();
+    let display_mode_clone = display_mode.clone();
+    let mut stdin_count: usize = 0;
+
+    glib::idle_add_local(move || {
+        while let Ok(line) = rx.try_recv() {
+            list_state_clone.append_item(Item {
+                title: line.to_string(),
+                value: line.to_string(),
+                category: "stdin".to_string(),
+                display: display_mode_clone.clone(),
+                source: SourceMode::Config,
+                preview_template: None,
+            });
+
+            stdin_count += 1;
+            if stdin_count >= MAX_ITEMS {
+                return glib::ControlFlow::Break;
+            }
+
+            if list_state_clone.selection.selected() == gtk4::INVALID_LIST_POSITION {
+                list_state_clone.select_first();
+            }
+        }
+        glib::ControlFlow::Continue
+    });
 }
 
 fn build_main_widget(
