@@ -116,7 +116,6 @@ impl PreviewArea {
                 picture.set_valign(Align::Center);
                 picture.set_hexpand(true);
                 picture.set_vexpand(true);
-                picture.add_css_class("preview-image");
                 self.set_content(&picture);
             }
             PreviewPayload::Error(err) => {
@@ -125,7 +124,7 @@ impl PreviewArea {
                 label.set_valign(Align::Center);
                 label.set_hexpand(true);
                 label.set_vexpand(true);
-                label.add_css_class("error-label");
+                label.add_css_class("preview-error-box");
                 self.set_content(&label);
             }
         }
@@ -158,5 +157,6 @@ fn create_text_scrolled(text_view: &TextView) -> ScrolledWindow {
     scrolled.set_vexpand(true);
     scrolled.set_hscrollbar_policy(gtk4::PolicyType::Automatic);
     scrolled.set_vscrollbar_policy(gtk4::PolicyType::Automatic);
+    scrolled.add_css_class("preview-text-box");
     scrolled
 }

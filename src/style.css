@@ -197,11 +197,35 @@ paned > separator {
   padding: 0;
 }
 
-.preview-separator {
-  background: @border;
-  min-height: 1px;
-  border-radius: 9999px;
-  margin: 8px 12px;
+.preview-text-box {
+  background-color: alpha(currentColor, 0.03);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.preview-text-box textview {
+  font-family: monospace;
+  font-size: 0.9em;
+  background: transparent;
+}
+
+.preview-content-scrolled {
+  background-color: @card_bg;
+}
+
+.preview-image-box {
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+}
+
+.preview-error-box {
+  color: @text;
+  background-color: alpha(#e01b24, 0.1);
+  border: 1px solid alpha(#e01b24, 0.2);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px;
 }
 
 .preview-details-box {
