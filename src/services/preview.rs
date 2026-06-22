@@ -276,20 +276,56 @@ fn load_gif_first_frame(
     max_width: i32,
     max_height: i32,
 ) -> Option<(Vec<u8>, i32, i32)> {
-    let reader = ImageReader::open(path).ok()?.with_guessed_format().ok()?;
+    let reader = match ImageReader::open(path) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to open image file {}: {}", path.display(), e);
+            return None;
+        }
+    };
+    let reader = match reader.with_guessed_format() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to guess format for {}: {}", path.display(), e);
+            return None;
+        }
+    };
 
-    let (orig_w, orig_h) = reader.into_dimensions().ok()?;
+    let (orig_w, orig_h) = match reader.into_dimensions() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Failed to get dimensions for {}: {}", path.display(), e);
+            return None;
+        }
+    };
     let pixel_bytes = orig_w as u64 * orig_h as u64 * 4;
     if pixel_bytes > crate::constants::MAX_DECODE_PIXEL_BYTES {
         return None;
     }
 
-    let img = ImageReader::open(path)
-        .ok()?
-        .with_guessed_format()
-        .ok()?
-        .decode()
-        .ok()?;
+    let img = match ImageReader::open(path) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to open image {}: {}", path.display(), e);
+            return None;
+        }
+    };
+
+    let reader = match img.with_guessed_format() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to guess format for {}: {}", path.display(), e);
+            return None;
+        }
+    };
+
+    let img = match reader.decode() {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("Failed to decode image {}: {}", path.display(), e);
+            return None;
+        }
+    };
 
     let (width, height) = (img.width(), img.height());
 
@@ -331,7 +367,13 @@ fn load_image_data_raw(
         return load_gif_first_frame(path, max_width, max_height);
     }
 
-    let pixbuf = Pixbuf::from_file_at_scale(path, max_width, max_height, true).ok()?;
+    let pixbuf = match Pixbuf::from_file_at_scale(path, max_width, max_height, true) {
+        Ok(pb) => pb,
+        Err(e) => {
+            eprintln!("Failed to load Pixbuf from file {}: {}", path.display(), e);
+            return None;
+        }
+    };
     let width = pixbuf.width();
     let height = pixbuf.height();
     let has_alpha = pixbuf.has_alpha();

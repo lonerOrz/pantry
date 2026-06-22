@@ -96,11 +96,23 @@ impl CacheManager {
     }
 
     pub fn load_raw_cache(&self, path: &Path) -> Option<(Vec<u8>, i32, i32)> {
-        let mut file = fs::File::open(path).ok()?;
+        let mut file = match fs::File::open(path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Failed to open cache file {}: {}", path.display(), e);
+                return None;
+            }
+        };
         let mut width_buf = [0u8; 4];
         let mut height_buf = [0u8; 4];
-        file.read_exact(&mut width_buf).ok()?;
-        file.read_exact(&mut height_buf).ok()?;
+        if let Err(e) = file.read_exact(&mut width_buf) {
+            eprintln!("Failed to read width from cache {}: {}", path.display(), e);
+            return None;
+        }
+        if let Err(e) = file.read_exact(&mut height_buf) {
+            eprintln!("Failed to read height from cache {}: {}", path.display(), e);
+            return None;
+        }
 
         let width = i32::from_ne_bytes(width_buf);
         let height = i32::from_ne_bytes(height_buf);
@@ -111,7 +123,10 @@ impl CacheManager {
         }
 
         let mut raw_data = Vec::with_capacity(expected_size as usize);
-        file.read_to_end(&mut raw_data).ok()?;
+        if let Err(e) = file.read_to_end(&mut raw_data) {
+            eprintln!("Failed to read data from cache {}: {}", path.display(), e);
+            return None;
+        }
 
         if raw_data.len() == expected_size as usize {
             Some((raw_data, width, height))
