@@ -113,6 +113,35 @@ impl<C: CacheAdapter, E: CommandExecutor, D: ImageDecoder> PreviewService<C, E, 
         }
     }
 
+    pub fn try_cache(&self, item: &Item) -> Option<PreviewPayload> {
+        if item.preview_template.is_some()
+            || matches!(item.source, crate::config::SourceMode::Dynamic)
+        {
+            return None;
+        }
+        if !matches!(item.display, crate::config::DisplayMode::Picture) {
+            return None;
+        }
+        let expanded_path = crate::utils::expand_tilde(&item.value);
+        if !expanded_path.exists() || !expanded_path.is_file() {
+            return None;
+        }
+        if crate::services::preview::is_video_file(&expanded_path) {
+            return None;
+        }
+        let cache_path = self.cache.get_cache_path(&item.category, &expanded_path);
+        if self.cache.is_cache_valid(&cache_path, &expanded_path)
+            && let Some((bytes, w, h)) = self.cache.load_raw_cache(&cache_path)
+        {
+            return Some(PreviewPayload::Image {
+                bytes: std::sync::Arc::new(bytes),
+                width: w,
+                height: h,
+            });
+        }
+        None
+    }
+
     pub fn resolve_payload(&self, item: &Item) -> PreviewPayload {
         if item.preview_template.is_some()
             || matches!(item.source, crate::config::SourceMode::Dynamic)

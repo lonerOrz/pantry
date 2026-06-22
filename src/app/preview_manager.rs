@@ -23,6 +23,13 @@ impl PreviewManager {
             return;
         };
 
+        let service = PREVIEW_SERVICE.get_or_init(create_prod_preview_service);
+
+        if let Some(cached) = service.try_cache(&item) {
+            preview_area_rc.borrow().render(cached, &item);
+            return;
+        }
+
         static NEXT_TASK_ID: OnceLock<AtomicU64> = OnceLock::new();
         static ACTIVE_TASK_ID: OnceLock<AtomicU64> = OnceLock::new();
         let next_id = NEXT_TASK_ID.get_or_init(|| AtomicU64::new(1));
@@ -36,7 +43,6 @@ impl PreviewManager {
             .render(PreviewPayload::Text("Loading...".to_string()), &item);
 
         let preview_area = preview_area_rc.clone();
-        let service = PREVIEW_SERVICE.get_or_init(create_prod_preview_service);
         let item_clone = item.clone();
 
         glib::spawn_future_local(async move {
