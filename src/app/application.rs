@@ -95,7 +95,6 @@ impl PantryApp {
             &window,
             &list_state,
             &search_entry,
-            preview_area_rc_opt.clone(),
         );
 
         if matches!(self.input_mode, InputMode::Config) {

@@ -5,9 +5,6 @@ pub fn setup_keyboard_controller(
     window: &ApplicationWindow,
     list_state: &ListState,
     search_entry: &gtk4::SearchEntry,
-    _preview_area_rc_opt: Option<
-        std::rc::Rc<std::cell::RefCell<crate::ui::preview::PreviewArea>>,
-    >,
 ) {
     let controller = EventControllerKey::new();
     controller.set_propagation_phase(PropagationPhase::Capture);
