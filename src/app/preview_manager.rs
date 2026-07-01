@@ -6,7 +6,8 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::cache::CacheAdapter;
-use crate::services::preview::{CommandExecutor, ImageDecoder};
+use crate::services::preview::ImageDecoder;
+use crate::services::process::CommandExecutor;
 
 /// Abstract preview update interface — erases C, E, D generics from the UI layer
 pub trait PreviewUpdater {

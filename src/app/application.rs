@@ -9,7 +9,8 @@ use crate::app::{
     ui_builder::{self, UiMode},
 };
 use crate::domain::DisplayMode;
-use crate::services::preview::{create_prod_preview_service, ShellExec};
+use crate::services::preview::create_prod_preview_service;
+use crate::services::process::ShellExec;
 use crate::ui::list::ListState;
 use crate::window_state::WindowState;
 
@@ -69,8 +70,7 @@ impl PantryApp {
         use crate::app::preview_manager::PreviewUpdater;
 
         let raw_manager = PreviewManager::new(create_prod_preview_service());
-        let preview_manager: Rc<RefCell<dyn PreviewUpdater>> =
-            Rc::new(RefCell::new(raw_manager));
+        let preview_manager: Rc<RefCell<dyn PreviewUpdater>> = Rc::new(RefCell::new(raw_manager));
 
         let search_query: crate::ui::search::SearchState = Rc::new(RefCell::new(String::new()));
 
@@ -145,8 +145,12 @@ impl PantryApp {
         glib::spawn_future_local(async move {
             let load_result = gio::spawn_blocking(move || {
                 let executor = ShellExec;
-                let processed_items =
-                    crate::services::pipeline::run(&config, &category_filter, &display_arg, &executor);
+                let processed_items = crate::services::pipeline::run(
+                    &config,
+                    &category_filter,
+                    &display_arg,
+                    &executor,
+                );
                 Ok::<Vec<crate::domain::item::Item>, String>(processed_items)
             })
             .await;
