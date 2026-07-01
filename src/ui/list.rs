@@ -19,8 +19,6 @@ pub struct ListState {
     pub selection: SingleSelection,
     pub view: ListView,
     sorter: CustomSorter,
-    #[allow(dead_code)]
-    filter_model: FilterListModel,
 }
 
 impl ListState {
@@ -45,7 +43,6 @@ impl ListState {
         Self {
             store,
             filter,
-            filter_model,
             sort_model,
             sorter,
             selection,
