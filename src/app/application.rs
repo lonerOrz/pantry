@@ -8,6 +8,7 @@ use crate::app::{
     preview_manager::PreviewManager,
     ui_builder::{self, UiMode},
 };
+use crate::domain::DisplayMode;
 use crate::services::preview::create_prod_preview_service;
 use crate::ui::list::ListState;
 use crate::window_state::WindowState;
@@ -71,16 +72,30 @@ impl PantryApp {
 
         let search_query: crate::ui::search::SearchState = Rc::new(RefCell::new(String::new()));
 
+        let parsed_config = if matches!(self.input_mode, InputMode::Config) {
+            Some(crate::services::loader::parse_config(&self.args.config))
+        } else {
+            None
+        };
+
         let mode = match &self.input_mode {
             InputMode::Stdin => UiMode::Stdin,
-            InputMode::Config => {
-                let display_mode = crate::config::get_config_display_mode(
-                    &self.args.config,
-                    &self.args.category,
-                    &self.args.display,
-                );
-                UiMode::Config { display_mode }
-            }
+            InputMode::Config => match parsed_config.as_ref().unwrap() {
+                Ok(config) => {
+                    let display_mode = crate::config::get_config_display_mode(
+                        config,
+                        &self.args.category,
+                        &self.args.display,
+                    );
+                    UiMode::Config { display_mode }
+                }
+                Err(e) => {
+                    eprintln!("{}", e);
+                    UiMode::Config {
+                        display_mode: DisplayMode::Text,
+                    }
+                }
+            },
         };
 
         let (window, list_state, preview_area_rc_opt, search_entry) = ui_builder::build_ui(
@@ -97,10 +112,10 @@ impl PantryApp {
             &search_entry,
         );
 
-        if matches!(self.input_mode, InputMode::Config) {
+        if let Some(Ok(config)) = parsed_config {
             self.load_items_from_config(
                 &list_state,
-                &self.args.config,
+                config,
                 &self.args.category,
                 &self.args.display,
                 preview_area_rc_opt.clone(),
@@ -115,7 +130,7 @@ impl PantryApp {
     fn load_items_from_config(
         &self,
         list_state: &ListState,
-        config_path: &str,
+        config: crate::config::Config,
         category_filter: &Option<String>,
         display_arg: &Option<String>,
         preview_area_rc_opt: Option<
@@ -131,7 +146,6 @@ impl PantryApp {
             >,
         >,
     ) {
-        let config_path = config_path.to_string();
         let category_filter = category_filter.clone();
         let display_arg = display_arg.clone();
         let list_state = list_state.clone();
@@ -140,7 +154,6 @@ impl PantryApp {
 
         glib::spawn_future_local(async move {
             let load_result = gio::spawn_blocking(move || {
-                let config = crate::services::loader::parse_config(&config_path)?;
                 let processed_items = crate::services::pipeline::run(
                     &config,
                     &category_filter,
