@@ -52,7 +52,7 @@ pub fn build_ui(
         UiMode::Config { .. } => {}
     }
 
-    list_state.view.grab_focus();
+    list_state.grab_focus();
 
     setup_preview_updates(
         &window,
@@ -155,7 +155,7 @@ fn spawn_stdin_reader(list_state: &ListState, display_mode: &DisplayMode) {
             }
         }
 
-        if list_state_clone.selection.selected() == gtk4::INVALID_LIST_POSITION && stdin_count > 0 {
+        if list_state_clone.selected_index() == gtk4::INVALID_LIST_POSITION && stdin_count > 0 {
             list_state_clone.select_first();
         }
 
@@ -203,16 +203,15 @@ fn build_main_widget(
     list_stack.add_titled(&empty_box, Some("empty"), "Empty");
 
     let list_stack_clone = list_stack.clone();
-    let sort_model_clone = list_state.sort_model.clone();
 
-    if sort_model_clone.n_items() == 0 {
+    if list_state.n_items() == 0 {
         list_stack_clone.set_visible_child_name("empty");
     } else {
         list_stack_clone.set_visible_child_name("content");
     }
 
-    sort_model_clone.connect_items_changed(move |model, _, _, _| {
-        if model.n_items() == 0 {
+    list_state.connect_items_changed(move |n_items| {
+        if n_items == 0 {
             list_stack_clone.set_visible_child_name("empty");
         } else {
             list_stack_clone.set_visible_child_name("content");
@@ -229,7 +228,7 @@ fn build_content(
     if matches!(display_mode, DisplayMode::Picture) {
         let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
 
-        let scrolled = wrap_in_scroll(&list_state.view);
+        let scrolled = wrap_in_scroll(list_state.view());
         scrolled.set_hexpand(true);
         paned.set_start_child(Some(&scrolled));
 
@@ -250,7 +249,7 @@ fn build_content(
         )
     } else {
         let layout = GtkBox::new(Orientation::Vertical, 0);
-        let scrolled = wrap_in_scroll(&list_state.view);
+        let scrolled = wrap_in_scroll(list_state.view());
         layout.append(&scrolled);
 
         (layout.upcast::<gtk4::Widget>(), None)
@@ -277,32 +276,30 @@ fn setup_preview_updates(
 
     let active_timeout_id = Rc::new(RefCell::new(None::<glib::SourceId>));
 
-    list_state
-        .selection
-        .connect_selection_changed(move |_, _, _| {
-            let preview_area_rc_opt_inner = preview_area_rc_opt_clone1.clone();
-            let list_state_inner = list_state_clone.clone();
-            let active_timeout_id_inner = active_timeout_id.clone();
-            let preview_manager_inner = preview_manager_clone1.clone();
+    list_state.connect_selection_changed(move || {
+        let preview_area_rc_opt_inner = preview_area_rc_opt_clone1.clone();
+        let list_state_inner = list_state_clone.clone();
+        let active_timeout_id_inner = active_timeout_id.clone();
+        let preview_manager_inner = preview_manager_clone1.clone();
 
-            if let Some(old_id) = active_timeout_id_inner.borrow_mut().take() {
-                old_id.remove();
-            }
+        if let Some(old_id) = active_timeout_id_inner.borrow_mut().take() {
+            old_id.remove();
+        }
 
-            let new_id = glib::timeout_add_local(
-                std::time::Duration::from_millis(crate::constants::PREVIEW_UPDATE_THROTTLE_MS),
-                move || {
-                    active_timeout_id_inner.borrow_mut().take();
+        let new_id = glib::timeout_add_local(
+            std::time::Duration::from_millis(crate::constants::PREVIEW_UPDATE_THROTTLE_MS),
+            move || {
+                active_timeout_id_inner.borrow_mut().take();
 
-                    preview_manager_inner
-                        .borrow()
-                        .update_preview(&list_state_inner, &preview_area_rc_opt_inner);
-                    glib::ControlFlow::Break
-                },
-            );
+                preview_manager_inner
+                    .borrow()
+                    .update_preview(&list_state_inner, &preview_area_rc_opt_inner);
+                glib::ControlFlow::Break
+            },
+        );
 
-            active_timeout_id.borrow_mut().replace(new_id);
-        });
+        active_timeout_id.borrow_mut().replace(new_id);
+    });
 
     glib::timeout_add_local(
         std::time::Duration::from_millis(crate::constants::INITIAL_PREVIEW_DELAY_MS),

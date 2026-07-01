@@ -1,7 +1,6 @@
-use crate::ui::item_object::ItemObject;
 use crate::ui::list::ListState;
 use gtk4::gdk::ModifierType;
-use gtk4::{ApplicationWindow, EventControllerKey, ListScrollFlags, PropagationPhase, prelude::*};
+use gtk4::{ApplicationWindow, EventControllerKey, PropagationPhase, prelude::*};
 
 pub fn setup_keyboard_controller(
     window: &ApplicationWindow,
@@ -30,51 +29,34 @@ pub fn setup_keyboard_controller(
         if is_cancel {
             if !search_entry.text().is_empty() && keyval == gtk4::gdk::Key::Escape {
                 search_entry.set_text("");
-            } else if let Some(win) = list_state.view.root().and_downcast::<ApplicationWindow>() {
-                win.close();
+            } else {
+                list_state.close_window(false);
             }
             return glib::Propagation::Stop;
         }
 
         // Multi-select: Tab marks and moves down, Shift+Tab marks and moves up
         if multi_mode && keyval == gtk4::gdk::Key::Tab {
-            let current = list_state.selection.selected();
-            let total = list_state.sort_model.n_items();
+            let current = list_state.selected_index();
+            let total = list_state.n_items();
 
             if current != gtk4::INVALID_LIST_POSITION && current < total {
-                if let Some(obj) = list_state
-                    .sort_model
-                    .item(current)
-                    .and_downcast::<ItemObject>()
-                {
-                    let new_marked = !obj.is_marked();
-                    obj.set_marked(new_marked);
-
-                    // remove + insert forces the model chain to propagate re-bind
-                    if let Some(index) = list_state.store.find(&obj) {
-                        list_state.store.remove(index);
-                        list_state.store.insert(index, &obj);
-                    }
-                }
+                list_state.toggle_marked(current);
 
                 if has_shift {
                     if current > 0 {
                         let prev = current - 1;
-                        list_state.selection.set_selected(prev);
-                        list_state
-                            .view
-                            .scroll_to(prev, ListScrollFlags::FOCUS, None);
+                        list_state.set_selected(prev);
+                        list_state.scroll_to(prev);
                     } else {
-                        list_state.selection.set_selected(current);
+                        list_state.set_selected(current);
                     }
                 } else if current + 1 < total {
                     let next = current + 1;
-                    list_state.selection.set_selected(next);
-                    list_state
-                        .view
-                        .scroll_to(next, ListScrollFlags::FOCUS, None);
+                    list_state.set_selected(next);
+                    list_state.scroll_to(next);
                 } else {
-                    list_state.selection.set_selected(current);
+                    list_state.set_selected(current);
                 }
             }
             return glib::Propagation::Stop;
@@ -87,35 +69,31 @@ pub fn setup_keyboard_controller(
             || (has_ctrl && (keyval == gtk4::gdk::Key::n || keyval == gtk4::gdk::Key::j));
 
         if is_up {
-            let current = list_state.selection.selected();
+            let current = list_state.selected_index();
             if current != gtk4::INVALID_LIST_POSITION && current > 0 {
                 let prev = current - 1;
-                list_state.selection.set_selected(prev);
-                list_state
-                    .view
-                    .scroll_to(prev, ListScrollFlags::FOCUS, None);
+                list_state.set_selected(prev);
+                list_state.scroll_to(prev);
             } else {
-                controller.forward(&list_state.view);
+                list_state.forward_key(controller);
             }
             return glib::Propagation::Stop;
         }
 
         if is_down {
-            let current = list_state.selection.selected();
-            let total = list_state.sort_model.n_items();
+            let current = list_state.selected_index();
+            let total = list_state.n_items();
             if current == gtk4::INVALID_LIST_POSITION {
                 if total > 0 {
-                    list_state.selection.set_selected(0);
-                    list_state.view.scroll_to(0, ListScrollFlags::FOCUS, None);
+                    list_state.set_selected(0);
+                    list_state.scroll_to(0);
                 }
             } else if current + 1 < total {
                 let next = current + 1;
-                list_state.selection.set_selected(next);
-                list_state
-                    .view
-                    .scroll_to(next, ListScrollFlags::FOCUS, None);
+                list_state.set_selected(next);
+                list_state.scroll_to(next);
             } else {
-                controller.forward(&list_state.view);
+                list_state.forward_key(controller);
             }
             return glib::Propagation::Stop;
         }
@@ -131,16 +109,7 @@ pub fn setup_keyboard_controller(
 }
 
 pub fn handle_selection(list_state: &ListState) {
-    // Collect all marked items from the underlying store
-    let mut selected_values = Vec::new();
-    let n_items = list_state.store.n_items();
-    for i in 0..n_items {
-        if let Some(obj) = list_state.store.item(i).and_downcast::<ItemObject>()
-            && obj.is_marked()
-        {
-            selected_values.push(obj.value());
-        }
-    }
+    let mut selected_values = list_state.marked_values();
 
     if selected_values.is_empty()
         && let Some(item) = list_state.selected_item()
@@ -156,14 +125,5 @@ pub fn handle_selection(list_state: &ListState) {
     }
     let _ = std::io::Write::flush(&mut std::io::stdout());
 
-    if let Some(window) = list_state.view.root().and_downcast::<ApplicationWindow>() {
-        let (width, height) = window.default_size();
-        let state = crate::window_state::WindowState {
-            width,
-            height,
-            maximized: window.is_maximized(),
-        };
-        state.save();
-        window.close();
-    }
+    list_state.close_window(true);
 }
