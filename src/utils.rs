@@ -32,6 +32,14 @@ pub fn path_to_safe_filename<P: AsRef<Path>>(path: P) -> String {
         .collect()
 }
 
+pub fn escape_shell_arg(s: &str) -> String {
+    if s.is_empty() {
+        return "''".to_string();
+    }
+    let escaped = s.replace('\'', "'\\''");
+    format!("'{}'", escaped)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,5 +77,25 @@ mod tests {
     #[test]
     fn safe_filename_handles_control_chars() {
         assert_eq!(path_to_safe_filename("a\u{0000}b"), "a_b");
+    }
+
+    #[test]
+    fn escape_plain_text() {
+        assert_eq!(escape_shell_arg("hello"), "'hello'");
+    }
+
+    #[test]
+    fn escape_injection_payload() {
+        assert_eq!(escape_shell_arg("123; rm -rf /"), "'123; rm -rf /'");
+    }
+
+    #[test]
+    fn escape_internal_single_quotes() {
+        assert_eq!(escape_shell_arg("it's simple"), "'it'\\''s simple'");
+    }
+
+    #[test]
+    fn escape_empty_string() {
+        assert_eq!(escape_shell_arg(""), "''");
     }
 }

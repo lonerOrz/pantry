@@ -163,10 +163,12 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
     }
 
     fn resolve_dynamic(&self, item: &Item) -> PreviewPayload {
+        let safe_value = crate::utils::escape_shell_arg(&item.value);
+
         let preview_cmd = if let Some(ref template) = item.preview_template {
-            template.replace("{}", &item.value)
+            template.replace("{}", &safe_value)
         } else {
-            format!("cliphist decode {}", item.value)
+            format!("cliphist decode {}", safe_value)
         };
 
         match self.executor.execute("sh", &["-c", &preview_cmd]) {
