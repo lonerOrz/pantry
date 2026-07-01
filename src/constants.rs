@@ -12,3 +12,4 @@ pub const MAX_ITEMS: usize = 10_000;
 pub const CACHE_MAX_SIZE_BYTES: u64 = 1024 * 1024 * 1024;
 pub const FFMPEG_THUMB_SCALE: i32 = 800;
 pub const FFMPEG_THUMB_QUALITY: i32 = 5;
+pub const MEM_CACHE_MAX_SIZE: usize = 16;

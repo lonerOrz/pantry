@@ -1,5 +1,6 @@
 pub mod decoder;
 pub mod detector;
+pub mod mem_cache;
 pub mod video;
 
 use crate::cache::{CacheAdapter, CacheManager};
@@ -9,6 +10,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 pub use decoder::{GdkPixbufDecoder, ImageDecoder};
+use mem_cache::MemoryCache;
 
 #[derive(Debug, Clone)]
 pub enum PreviewPayload {
@@ -41,6 +43,7 @@ pub struct PreviewService<
     cache: C,
     executor: E,
     decoder: D,
+    mem_cache: MemoryCache,
 }
 
 impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clone>
@@ -51,6 +54,7 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
             cache,
             executor,
             decoder,
+            mem_cache: MemoryCache::new(crate::constants::MEM_CACHE_MAX_SIZE),
         }
     }
 
@@ -84,7 +88,16 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
         if video::is_video(&expanded_path) {
             return None;
         }
-        self.load_valid_cache(&item.category, &expanded_path)
+
+        if let Some(payload) = self.mem_cache.get(&expanded_path) {
+            return Some(payload);
+        }
+
+        if let Some(payload) = self.load_valid_cache(&item.category, &expanded_path) {
+            self.mem_cache.insert(expanded_path, payload.clone());
+            return Some(payload);
+        }
+        None
     }
 
     pub fn resolve_payload(&self, item: &Item) -> PreviewPayload {
@@ -106,13 +119,19 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
             return PreviewPayload::Text(item.value.clone());
         }
 
+        if let Some(payload) = self.mem_cache.get(&expanded_path) {
+            return payload;
+        }
+
         if let Some(payload) = self.load_valid_cache(&item.category, &expanded_path) {
+            self.mem_cache
+                .insert(expanded_path.clone(), payload.clone());
             return payload;
         }
 
         let cache_path = self.cache.get_cache_path(&item.category, &expanded_path);
 
-        if video::is_video(&expanded_path) {
+        let payload = if video::is_video(&expanded_path) {
             video::generate_thumbnail(
                 &expanded_path,
                 &cache_path,
@@ -134,7 +153,13 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
             } else {
                 PreviewPayload::Error("Failed to decode image".to_string())
             }
+        };
+
+        if let PreviewPayload::Image { .. } = &payload {
+            self.mem_cache.insert(expanded_path, payload.clone());
         }
+
+        payload
     }
 
     fn resolve_dynamic(&self, item: &Item) -> PreviewPayload {
