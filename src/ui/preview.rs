@@ -107,7 +107,8 @@ impl PreviewArea {
                     height,
                     width * 4,
                 );
-                let picture = Picture::for_pixbuf(&pixbuf);
+                let texture = gtk4::gdk::Texture::for_pixbuf(&pixbuf);
+                let picture = Picture::for_paintable(&texture);
                 picture.set_halign(Align::Center);
                 picture.set_valign(Align::Center);
                 picture.set_hexpand(true);
