@@ -1,11 +1,5 @@
 use std::path::{Path, PathBuf};
 
-/// Check if path is a directory
-pub fn is_path_directory(path: &str) -> bool {
-    let expanded_path = expand_tilde(path);
-    std::path::Path::new(&expanded_path).is_dir()
-}
-
 /// Expand tilde (~) in path to home directory
 pub fn expand_tilde<P: AsRef<Path>>(path: P) -> PathBuf {
     let path = path.as_ref();

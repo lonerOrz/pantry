@@ -13,7 +13,10 @@ pub fn run(
     executor: &dyn CommandExecutor,
 ) -> Vec<Item> {
     let raw_items = resolve(config, category_filter, display_arg, executor);
-    expand_for_display(raw_items)
+    raw_items
+        .iter()
+        .flat_map(expansion::process_for_display)
+        .collect()
 }
 
 /// Resolve configuration into raw items
@@ -55,14 +58,6 @@ pub(crate) fn resolve(
     }
 
     items
-}
-
-/// Process items for display (e.g., expand directories in picture mode)
-pub(crate) fn expand_for_display(items: Vec<Item>) -> Vec<Item> {
-    items
-        .iter()
-        .flat_map(expansion::process_for_display)
-        .collect()
 }
 
 fn matches_category(

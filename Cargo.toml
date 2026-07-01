@@ -15,4 +15,6 @@ clap = { version = "4.0", features = ["derive"] }
 gio = "0.21.5"
 tempfile = "3.13"
 image = { version = "0.25", default-features = false, features = ["gif"] }
+
+[dev-dependencies]
 filetime = "0.2"

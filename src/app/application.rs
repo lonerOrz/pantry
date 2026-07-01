@@ -1,6 +1,7 @@
 use clap::Parser;
 use gtk4::{Application, gio, prelude::*};
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::app::{
@@ -14,13 +15,32 @@ use crate::services::process::ShellExec;
 use crate::ui::list::ListState;
 use crate::window_state::WindowState;
 
+fn parse_config(config_path: &str) -> Result<crate::config::Config, String> {
+    let content = std::fs::read_to_string(config_path)
+        .map_err(|e| format!("Failed to read config file {}: {}", config_path, e))?;
+    toml::from_str(&content)
+        .map_err(|e| format!("Failed to parse config file {}: {}", config_path, e))
+}
+
+fn get_default_config_path() -> String {
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("pantry");
+
+    if let Err(e) = std::fs::create_dir_all(&config_dir) {
+        eprintln!("Warning: Failed to create config directory: {}", e);
+    }
+
+    config_dir.join("config.toml").to_string_lossy().to_string()
+}
+
 #[derive(Debug, Parser)]
 #[command(
     name = "pantry",
     about = "A generic selector for various types of entries"
 )]
 pub struct Args {
-    #[arg(short = 'f', long, default_value_t = crate::services::loader::get_default_config_path())]
+    #[arg(short = 'f', long, default_value_t = get_default_config_path())]
     pub config: String,
 
     #[arg(short = 'c', long = "category")]
@@ -30,30 +50,21 @@ pub struct Args {
     pub display: Option<String>,
 }
 
-pub enum InputMode {
-    Stdin,
-    Config,
-}
-
 pub struct PantryApp {
     args: Args,
-    input_mode: InputMode,
+    is_stdin: bool,
     window_state: WindowState,
 }
 
 impl PantryApp {
     pub fn new() -> Self {
         let args = Args::parse();
-        let input_mode = if is_stdin_piped_or_redirected() {
-            InputMode::Stdin
-        } else {
-            InputMode::Config
-        };
+        let is_stdin = is_stdin_piped_or_redirected();
         let window_state = WindowState::load();
 
         PantryApp {
             args,
-            input_mode,
+            is_stdin,
             window_state,
         }
     }
@@ -74,15 +85,16 @@ impl PantryApp {
 
         let search_query: crate::ui::search::SearchState = Rc::new(RefCell::new(String::new()));
 
-        let parsed_config = if matches!(self.input_mode, InputMode::Config) {
-            Some(crate::services::loader::parse_config(&self.args.config))
+        let parsed_config = if !self.is_stdin {
+            Some(parse_config(&self.args.config))
         } else {
             None
         };
 
-        let mode = match &self.input_mode {
-            InputMode::Stdin => UiMode::Stdin,
-            InputMode::Config => match parsed_config.as_ref().unwrap() {
+        let mode = if self.is_stdin {
+            UiMode::Stdin
+        } else {
+            match parsed_config.as_ref().unwrap() {
                 Ok(config) => {
                     let display_mode = crate::config::get_config_display_mode(
                         config,
@@ -97,7 +109,7 @@ impl PantryApp {
                         display_mode: DisplayMode::Text,
                     }
                 }
-            },
+            }
         };
 
         let (window, list_state, preview_area_rc_opt, search_entry) = ui_builder::build_ui(

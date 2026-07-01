@@ -1,4 +1,4 @@
-use crate::constants::{DYNAMIC_OUTPUT_MAX_BYTES, MAX_ITEMS};
+use crate::constants::MAX_ITEMS;
 use crate::domain::DisplayMode;
 use crate::domain::item::Item;
 use crate::services::process::CommandExecutor;
@@ -12,12 +12,11 @@ const MEDIA_EXTENSIONS: &[&str] = &[
 pub fn process_for_display(item: &Item) -> Vec<Item> {
     if matches!(item.display, DisplayMode::Picture) {
         let expanded_path = crate::utils::expand_tilde(&item.value);
-        let expanded_path_str = expanded_path.to_string_lossy().to_string();
 
-        if crate::utils::is_path_directory(&expanded_path_str) {
+        if expanded_path.is_dir() {
             use walkdir::WalkDir;
             let mut paths = Vec::new();
-            for entry in WalkDir::new(&expanded_path_str)
+            for entry in WalkDir::new(&expanded_path)
                 .max_depth(3)
                 .follow_links(true)
                 .into_iter()
@@ -46,7 +45,7 @@ pub fn process_for_display(item: &Item) -> Vec<Item> {
             paths
         } else {
             let mut single = item.clone();
-            single.value = expanded_path_str;
+            single.value = expanded_path.to_string_lossy().to_string();
             vec![single]
         }
     } else {
@@ -64,14 +63,6 @@ pub fn process_dynamic_source(
 
     if !output.success {
         return Err("List command failed".into());
-    }
-
-    let truncated = output.stdout.len() >= DYNAMIC_OUTPUT_MAX_BYTES;
-    if truncated {
-        eprintln!(
-            "Warning: dynamic source output exceeded {} bytes, truncated",
-            DYNAMIC_OUTPUT_MAX_BYTES
-        );
     }
 
     let raw_stdout = String::from_utf8_lossy(&output.stdout);

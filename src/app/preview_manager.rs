@@ -18,6 +18,7 @@ pub trait PreviewUpdater {
     );
 }
 
+#[derive(Clone)]
 pub struct PreviewManager<
     C: CacheAdapter + Clone,
     E: CommandExecutor + Clone,
@@ -26,20 +27,6 @@ pub struct PreviewManager<
     service: PreviewService<C, E, D>,
     next_task_id: Cell<u64>,
     active_task_id: Cell<u64>,
-}
-impl<
-    C: CacheAdapter + Clone + 'static,
-    E: CommandExecutor + Clone + 'static,
-    D: ImageDecoder + Clone + 'static,
-> Clone for PreviewManager<C, E, D>
-{
-    fn clone(&self) -> Self {
-        Self {
-            service: self.service.clone(),
-            next_task_id: Cell::new(self.next_task_id.get()),
-            active_task_id: Cell::new(self.active_task_id.get()),
-        }
-    }
 }
 
 impl<

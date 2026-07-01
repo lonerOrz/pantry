@@ -8,6 +8,7 @@ use gtk4::{
     gio,
 };
 use std::cmp::Ordering;
+use std::fmt::Write;
 
 use crate::ui::search::SearchState;
 
@@ -223,10 +224,12 @@ fn highlight_title(title: &str, query: &str) -> String {
 
     for c in title.chars() {
         if qi < chars.len() && c.to_lowercase().next() == Some(chars[qi]) {
-            result.push_str(&format!(
+            let escaped = glib::markup_escape_text(&c.to_string());
+            let _ = write!(
+                result,
                 "<span foreground='#3584e4' weight='bold'>{}</span>",
-                glib::markup_escape_text(&c.to_string())
-            ));
+                escaped
+            );
             qi += 1;
         } else {
             result.push_str(&glib::markup_escape_text(&c.to_string()));

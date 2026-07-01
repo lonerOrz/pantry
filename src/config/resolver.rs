@@ -1,4 +1,5 @@
 use crate::domain::DisplayMode;
+use std::str::FromStr;
 
 /// Unified display mode resolution with priority: command line > category > global > default
 pub fn resolve_display_mode(
@@ -6,12 +7,10 @@ pub fn resolve_display_mode(
     category_display: &Option<DisplayMode>,
     global_display: &DisplayMode,
 ) -> DisplayMode {
-    if let Some(display_str) = display_arg {
-        match display_str.as_str() {
-            "picture" => return DisplayMode::Picture,
-            "text" => return DisplayMode::Text,
-            _ => {}
-        }
+    if let Some(display_str) = display_arg
+        && let Ok(mode) = DisplayMode::from_str(display_str)
+    {
+        return mode;
     }
 
     if let Some(cat_display) = category_display {

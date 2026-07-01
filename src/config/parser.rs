@@ -1,5 +1,6 @@
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use crate::domain::{DisplayMode, SourceMode};
 
@@ -17,21 +18,6 @@ pub struct Config {
     pub categories: HashMap<String, Category>,
 }
 
-fn parse_display_mode(s: &str) -> DisplayMode {
-    match s {
-        "picture" => DisplayMode::Picture,
-        _ => DisplayMode::default(),
-    }
-}
-
-fn parse_source_mode(s: &str) -> SourceMode {
-    match s {
-        "command" => SourceMode::Command,
-        "dynamic" => SourceMode::Dynamic,
-        _ => SourceMode::default(),
-    }
-}
-
 impl<'de> Deserialize<'de> for Config {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -46,13 +32,13 @@ impl<'de> Deserialize<'de> for Config {
         let display = table
             .get("display")
             .and_then(|v| v.as_str())
-            .map(parse_display_mode)
+            .and_then(|s| DisplayMode::from_str(s).ok())
             .unwrap_or_default();
 
         let source = table
             .get("source")
             .and_then(|v| v.as_str())
-            .map(parse_source_mode)
+            .and_then(|s| SourceMode::from_str(s).ok())
             .unwrap_or_default();
 
         let mut categories = HashMap::new();
@@ -64,12 +50,12 @@ impl<'de> Deserialize<'de> for Config {
                 let cat_display = cat_table
                     .get("display")
                     .and_then(|v| v.as_str())
-                    .map(parse_display_mode);
+                    .and_then(|s| DisplayMode::from_str(s).ok());
 
                 let cat_source = cat_table
                     .get("source")
                     .and_then(|v| v.as_str())
-                    .map(parse_source_mode);
+                    .and_then(|s| SourceMode::from_str(s).ok());
 
                 let entries: HashMap<String, String> = cat_table
                     .get("entries")
