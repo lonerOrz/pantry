@@ -97,13 +97,15 @@ fn build_ui_shell(
 
     search_entry.set_key_capture_widget(Some(&window));
 
-    header::connect_search_changed(
-        &search_entry,
-        &list_state,
-        query_state,
-        &preview_area_rc_opt,
-        preview_manager,
-    );
+    let preview_manager_clone = preview_manager.clone();
+    let list_state_clone = list_state.clone();
+    let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
+
+    header::connect_search_changed(&search_entry, &list_state, query_state, move || {
+        preview_manager_clone
+            .borrow()
+            .update_preview(&list_state_clone, &preview_area_rc_opt_clone);
+    });
 
     (
         window,
