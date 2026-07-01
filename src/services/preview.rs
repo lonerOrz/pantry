@@ -554,44 +554,47 @@ mod tests {
     }
 
     fn text_item(value: &str) -> Item {
-        Item::builder()
-            .title("test".into())
-            .value(value.into())
-            .category("cat".into())
-            .display(DisplayMode::Text)
-            .source(SourceMode::Config)
-            .build()
+        Item {
+            title: "test".into(),
+            value: value.into(),
+            category: "cat".into(),
+            display: DisplayMode::Text,
+            source: SourceMode::Config,
+            preview_template: None,
+        }
     }
 
     fn dynamic_item(value: &str) -> Item {
-        Item::builder()
-            .title("test".into())
-            .value(value.into())
-            .category("cat".into())
-            .display(DisplayMode::Text)
-            .source(SourceMode::Dynamic)
-            .build()
+        Item {
+            title: "test".into(),
+            value: value.into(),
+            category: "cat".into(),
+            display: DisplayMode::Text,
+            source: SourceMode::Dynamic,
+            preview_template: None,
+        }
     }
 
     fn dynamic_item_with_template(value: &str, template: &str) -> Item {
-        Item::builder()
-            .title("test".into())
-            .value(value.into())
-            .category("cat".into())
-            .display(DisplayMode::Text)
-            .source(SourceMode::Dynamic)
-            .preview_template(template.into())
-            .build()
+        Item {
+            title: "test".into(),
+            value: value.into(),
+            category: "cat".into(),
+            display: DisplayMode::Text,
+            source: SourceMode::Dynamic,
+            preview_template: Some(template.into()),
+        }
     }
 
     fn picture_item(path: &str) -> Item {
-        Item::builder()
-            .title("test".into())
-            .value(path.into())
-            .category("cat".into())
-            .display(DisplayMode::Picture)
-            .source(SourceMode::Config)
-            .build()
+        Item {
+            title: "test".into(),
+            value: path.into(),
+            category: "cat".into(),
+            display: DisplayMode::Picture,
+            source: SourceMode::Config,
+            preview_template: None,
+        }
     }
 
     #[test]
