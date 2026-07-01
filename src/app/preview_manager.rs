@@ -8,6 +8,15 @@ use std::rc::Rc;
 use crate::cache::CacheAdapter;
 use crate::services::preview::{CommandExecutor, ImageDecoder};
 
+/// Abstract preview update interface — erases C, E, D generics from the UI layer
+pub trait PreviewUpdater {
+    fn update_preview(
+        &self,
+        list_state: &ListState,
+        preview_area_rc_opt: &Option<Rc<RefCell<PreviewArea>>>,
+    );
+}
+
 pub struct PreviewManager<
     C: CacheAdapter + Clone,
     E: CommandExecutor + Clone,
@@ -101,5 +110,20 @@ impl<
                 }
             }
         });
+    }
+}
+
+impl<C, E, D> PreviewUpdater for PreviewManager<C, E, D>
+where
+    C: CacheAdapter + Clone + 'static,
+    E: CommandExecutor + Clone + 'static,
+    D: ImageDecoder + Clone + 'static,
+{
+    fn update_preview(
+        &self,
+        list_state: &ListState,
+        preview_area_rc_opt: &Option<Rc<RefCell<PreviewArea>>>,
+    ) {
+        self.update_preview(list_state, preview_area_rc_opt);
     }
 }

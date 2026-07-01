@@ -1,11 +1,8 @@
 use gtk4::{AboutDialog, ApplicationWindow, Button, HeaderBar, Label, SearchEntry, prelude::*};
 
-use crate::app::preview_manager::PreviewManager;
+use crate::app::preview_manager::PreviewUpdater;
 use crate::ui::list::ListState;
 use crate::ui::preview;
-
-use crate::cache::CacheAdapter;
-use crate::services::preview::{CommandExecutor, ImageDecoder};
 
 pub fn build_header_bar() -> (HeaderBar, SearchEntry, Button) {
     let header_bar = HeaderBar::new();
@@ -48,16 +45,12 @@ pub fn connect_about_dialog(window: &ApplicationWindow, menu_button: &Button) {
     });
 }
 
-pub fn connect_search_changed<
-    C: CacheAdapter + Clone + 'static,
-    E: CommandExecutor + Clone + 'static,
-    D: ImageDecoder + Clone + 'static,
->(
+pub fn connect_search_changed(
     search_entry: &SearchEntry,
     list_state: &ListState,
     query_state: &crate::ui::search::SearchState,
     preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>,
-    preview_manager: &std::rc::Rc<std::cell::RefCell<PreviewManager<C, E, D>>>,
+    preview_manager: &std::rc::Rc<std::cell::RefCell<dyn PreviewUpdater>>,
 ) {
     let list_state_clone = list_state.clone();
     let query_state_clone = query_state.clone();

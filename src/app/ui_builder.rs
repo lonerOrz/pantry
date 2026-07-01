@@ -11,25 +11,19 @@ use crate::domain::{DisplayMode, SourceMode};
 use crate::ui::{header, list::ListState, preview, window};
 use crate::window_state::WindowState;
 
-use crate::app::preview_manager::PreviewManager;
-use crate::cache::CacheAdapter;
-use crate::services::preview::{CommandExecutor, ImageDecoder};
+use crate::app::preview_manager::PreviewUpdater;
 
 pub enum UiMode {
     Stdin,
     Config { display_mode: DisplayMode },
 }
 
-pub fn build_ui<
-    C: CacheAdapter + Clone + 'static,
-    E: CommandExecutor + Clone + 'static,
-    D: ImageDecoder + Clone + 'static,
->(
+pub fn build_ui(
     window_state: &WindowState,
     app: &Application,
     query_state: crate::ui::search::SearchState,
     mode: UiMode,
-    preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
+    preview_manager: &Rc<RefCell<dyn PreviewUpdater>>,
 ) -> (
     ApplicationWindow,
     ListState,
@@ -72,16 +66,12 @@ pub fn build_ui<
     (window, list_state, preview_area_rc_opt, search_entry)
 }
 
-fn build_ui_shell<
-    C: CacheAdapter + Clone + 'static,
-    E: CommandExecutor + Clone + 'static,
-    D: ImageDecoder + Clone + 'static,
->(
+fn build_ui_shell(
     window_state: &WindowState,
     app: &Application,
     query_state: &crate::ui::search::SearchState,
     display_mode: &DisplayMode,
-    preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
+    preview_manager: &Rc<RefCell<dyn PreviewUpdater>>,
 ) -> (
     ApplicationWindow,
     ListState,
@@ -260,17 +250,13 @@ fn build_content(
     }
 }
 
-fn setup_preview_updates<
-    C: CacheAdapter + Clone + 'static,
-    E: CommandExecutor + Clone + 'static,
-    D: ImageDecoder + Clone + 'static,
->(
+fn setup_preview_updates(
     window: &ApplicationWindow,
     main_widget: &gtk4::Widget,
     list_state: &ListState,
     preview_area_rc_opt: &Option<Rc<RefCell<preview::PreviewArea>>>,
     display_mode: DisplayMode,
-    preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
+    preview_manager: &Rc<RefCell<dyn PreviewUpdater>>,
 ) {
     if !matches!(display_mode, DisplayMode::Picture) {
         return;

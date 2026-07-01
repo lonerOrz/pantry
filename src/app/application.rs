@@ -9,7 +9,7 @@ use crate::app::{
     ui_builder::{self, UiMode},
 };
 use crate::domain::DisplayMode;
-use crate::services::preview::create_prod_preview_service;
+use crate::services::preview::{create_prod_preview_service, ShellExec};
 use crate::ui::list::ListState;
 use crate::window_state::WindowState;
 
@@ -66,9 +66,11 @@ impl PantryApp {
     }
 
     fn build_ui(&self, app: &Application) {
-        let preview_manager = Rc::new(RefCell::new(PreviewManager::new(
-            create_prod_preview_service(),
-        )));
+        use crate::app::preview_manager::PreviewUpdater;
+
+        let raw_manager = PreviewManager::new(create_prod_preview_service());
+        let preview_manager: Rc<RefCell<dyn PreviewUpdater>> =
+            Rc::new(RefCell::new(raw_manager));
 
         let search_query: crate::ui::search::SearchState = Rc::new(RefCell::new(String::new()));
 
@@ -132,15 +134,7 @@ impl PantryApp {
         preview_area_rc_opt: Option<
             std::rc::Rc<std::cell::RefCell<crate::ui::preview::PreviewArea>>,
         >,
-        preview_manager: &Rc<
-            RefCell<
-                PreviewManager<
-                    crate::cache::CacheManager,
-                    crate::services::preview::ShellExec,
-                    crate::services::preview::GdkPixbufDecoder,
-                >,
-            >,
-        >,
+        preview_manager: &Rc<RefCell<dyn crate::app::preview_manager::PreviewUpdater>>,
     ) {
         let category_filter = category_filter.clone();
         let display_arg = display_arg.clone();
@@ -150,8 +144,9 @@ impl PantryApp {
 
         glib::spawn_future_local(async move {
             let load_result = gio::spawn_blocking(move || {
+                let executor = ShellExec;
                 let processed_items =
-                    crate::services::pipeline::run(&config, &category_filter, &display_arg);
+                    crate::services::pipeline::run(&config, &category_filter, &display_arg, &executor);
                 Ok::<Vec<crate::domain::item::Item>, String>(processed_items)
             })
             .await;

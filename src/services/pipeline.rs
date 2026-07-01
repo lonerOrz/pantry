@@ -10,9 +10,9 @@ pub fn run(
     config: &Config,
     category_filter: &Option<String>,
     display_arg: &Option<String>,
+    executor: &dyn CommandExecutor,
 ) -> Vec<Item> {
-    let executor = crate::services::process::ShellExec;
-    let raw_items = resolve(config, category_filter, display_arg, &executor);
+    let raw_items = resolve(config, category_filter, display_arg, executor);
     expand_for_display(raw_items)
 }
 
