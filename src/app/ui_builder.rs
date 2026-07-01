@@ -325,18 +325,6 @@ fn setup_preview_updates<
     );
 
     if let Some(paned_widget) = main_widget.downcast_ref::<gtk4::Paned>() {
-        let window_clone = window.clone();
-        let paned_widget_clone = paned_widget.clone();
-        glib::timeout_add_local(
-            std::time::Duration::from_millis(crate::constants::SELECTION_UPDATE_DELAY_MS * 10),
-            move || {
-                let width = window_clone.default_size().0;
-                let position = (width as f64 * crate::constants::MAX_WINDOW_WIDTH_FRACTION) as i32;
-                paned_widget_clone.set_position(position);
-                glib::ControlFlow::Break
-            },
-        );
-
         let paned_widget_clone = paned_widget.clone();
         window.connect_realize(move |win| {
             let win_clone = win.clone();
