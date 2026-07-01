@@ -1,6 +1,5 @@
 use crate::domain::item::Item;
 use crate::services::preview::PreviewPayload;
-use gdk_pixbuf::Pixbuf;
 use gtk4::prelude::*;
 use gtk4::{Align, Grid, Label, Picture, ScrolledWindow, TextView};
 
@@ -98,16 +97,14 @@ impl PreviewArea {
                 width,
                 height,
             } => {
-                let pixbuf = Pixbuf::from_bytes(
-                    &glib::Bytes::from(&bytes[..]),
-                    gdk_pixbuf::Colorspace::Rgb,
-                    true,
-                    8,
+                let gbytes = glib::Bytes::from(&bytes[..]);
+                let texture = gtk4::gdk::MemoryTexture::new(
                     width,
                     height,
-                    width * 4,
+                    gtk4::gdk::MemoryFormat::R8g8b8a8,
+                    &gbytes,
+                    (width * 4) as usize,
                 );
-                let texture = gtk4::gdk::Texture::for_pixbuf(&pixbuf);
                 let picture = Picture::for_paintable(&texture);
                 picture.set_halign(Align::Center);
                 picture.set_valign(Align::Center);
