@@ -135,18 +135,30 @@ fn spawn_stdin_reader(list_state: &ListState, display_mode: &DisplayMode) {
     let mut stdin_count: usize = 0;
 
     glib::idle_add_local(move || {
-        while let Ok(line) = rx.try_recv() {
-            list_state_clone.append_item(Item::stdin(line, display_mode_clone.clone()));
+        use std::sync::mpsc::TryRecvError;
 
-            stdin_count += 1;
-            if stdin_count >= MAX_ITEMS {
-                return glib::ControlFlow::Break;
-            }
+        let mut batch_count = 0;
 
-            if list_state_clone.selection.selected() == gtk4::INVALID_LIST_POSITION {
-                list_state_clone.select_first();
+        while batch_count < 100 {
+            match rx.try_recv() {
+                Ok(line) => {
+                    list_state_clone.append_item(Item::stdin(line, display_mode_clone.clone()));
+                    stdin_count += 1;
+                    batch_count += 1;
+
+                    if stdin_count >= MAX_ITEMS {
+                        return glib::ControlFlow::Break;
+                    }
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => return glib::ControlFlow::Break,
             }
         }
+
+        if list_state_clone.selection.selected() == gtk4::INVALID_LIST_POSITION && stdin_count > 0 {
+            list_state_clone.select_first();
+        }
+
         glib::ControlFlow::Continue
     });
 }
