@@ -88,10 +88,6 @@ impl PreviewArea {
         self.content_scrolled.set_child(None::<&gtk4::Widget>);
 
         match payload {
-            PreviewPayload::None => {
-                let label = Label::new(Some("No image selected"));
-                self.set_content(&label);
-            }
             PreviewPayload::Text(text) => {
                 let text_view = create_text_view(&text);
                 let scrolled = create_text_scrolled(&text_view);

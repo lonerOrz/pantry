@@ -7,8 +7,6 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub enum PreviewPayload {
-    #[allow(dead_code)]
-    None,
     Text(String),
     Image {
         bytes: Arc<Vec<u8>>,
