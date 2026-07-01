@@ -194,18 +194,6 @@ impl PantryApp {
 }
 
 fn is_stdin_piped_or_redirected() -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::FileTypeExt;
-        if let Ok(metadata) = std::fs::metadata("/dev/stdin") {
-            let file_type = metadata.file_type();
-            file_type.is_fifo() || file_type.is_file()
-        } else {
-            false
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        !atty::is(atty::Stream::Stdin)
-    }
+    use std::io::IsTerminal;
+    !std::io::stdin().is_terminal()
 }
