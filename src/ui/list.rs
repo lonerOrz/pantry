@@ -1,26 +1,25 @@
 use crate::domain::item::Item;
-use crate::domain::r#match::{fuzzy_match, relevance_score};
 use crate::ui::item_object::ItemObject;
+use crate::ui::r#match::{fuzzy_match, relevance_score};
 use gtk4::prelude::*;
 use gtk4::{
-    Box as GtkBox, CustomFilter, CustomSorter, FilterChange, FilterListModel, Label, ListItem,
-    ListView, Orientation, SignalListItemFactory, SingleSelection, SortListModel, SorterChange,
-    gio,
+    ApplicationWindow, Box as GtkBox, CustomFilter, CustomSorter, FilterChange, FilterListModel,
+    Label, ListItem, ListView, Orientation, SignalListItemFactory, SingleSelection, SortListModel,
+    SorterChange, gio,
 };
 use std::cmp::Ordering;
+use std::fmt::Write;
 
 use crate::ui::search::SearchState;
 
 #[derive(Clone)]
 pub struct ListState {
-    pub store: gio::ListStore,
-    pub filter: CustomFilter,
-    pub sort_model: SortListModel,
-    pub selection: SingleSelection,
-    pub view: ListView,
+    store: gio::ListStore,
+    filter: CustomFilter,
+    sort_model: SortListModel,
+    selection: SingleSelection,
+    view: ListView,
     sorter: CustomSorter,
-    #[allow(dead_code)]
-    filter_model: FilterListModel,
 }
 
 impl ListState {
@@ -45,7 +44,6 @@ impl ListState {
         Self {
             store,
             filter,
-            filter_model,
             sort_model,
             sorter,
             selection,
@@ -74,8 +72,6 @@ impl ListState {
         if self.sort_model.n_items() == 0 {
             self.selection.set_selected(gtk4::INVALID_LIST_POSITION);
         } else {
-            // Simply select the first index without stealing the keyboard focus
-            // from the active search box.
             self.selection.set_selected(0);
         }
     }
@@ -83,6 +79,105 @@ impl ListState {
     pub fn refresh_filter(&self) {
         self.filter.changed(FilterChange::Different);
         self.sorter.changed(SorterChange::Different);
+    }
+
+    pub fn view(&self) -> &ListView {
+        &self.view
+    }
+
+    pub fn grab_focus(&self) {
+        self.view.grab_focus();
+    }
+
+    pub fn n_items(&self) -> u32 {
+        self.sort_model.n_items()
+    }
+
+    pub fn selected_index(&self) -> u32 {
+        self.selection.selected()
+    }
+
+    pub fn set_selected(&self, index: u32) {
+        self.selection.set_selected(index);
+    }
+
+    pub fn scroll_to(&self, index: u32) {
+        self.view
+            .scroll_to(index, gtk4::ListScrollFlags::FOCUS, None);
+    }
+
+    pub fn toggle_marked(&self, sorted_index: u32) -> bool {
+        if let Some(obj) = self
+            .sort_model
+            .item(sorted_index)
+            .and_downcast::<ItemObject>()
+        {
+            let new_marked = !obj.is_marked();
+            obj.set_marked(new_marked);
+
+            if let Some(index) = self.store.find(&obj) {
+                self.store.remove(index);
+                self.store.insert(index, &obj);
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn forward_key(&self, controller: &gtk4::EventControllerKey) -> bool {
+        controller.forward(&self.view)
+    }
+
+    pub fn close_window(&self, save_state: bool) {
+        if let Some(win) = self
+            .view
+            .root()
+            .and_then(|r| r.downcast::<ApplicationWindow>().ok())
+        {
+            if save_state {
+                let (width, height) = win.default_size();
+                let state = crate::window_state::WindowState {
+                    width,
+                    height,
+                    maximized: win.is_maximized(),
+                };
+                state.save();
+            }
+            win.close();
+        }
+    }
+
+    pub fn marked_values(&self) -> Vec<String> {
+        let mut values = Vec::new();
+        let n = self.store.n_items();
+        for i in 0..n {
+            if let Some(obj) = self.store.item(i).and_downcast::<ItemObject>()
+                && obj.is_marked()
+            {
+                values.push(obj.value());
+            }
+        }
+        values
+    }
+
+    pub fn connect_selection_changed<F>(&self, callback: F)
+    where
+        F: Fn() + 'static,
+    {
+        self.selection.connect_selection_changed(move |_, _, _| {
+            callback();
+        });
+    }
+
+    pub fn connect_items_changed<F>(&self, callback: F)
+    where
+        F: Fn(u32) + 'static,
+    {
+        self.sort_model
+            .connect_items_changed(move |model, _, _, _| {
+                callback(model.n_items());
+            });
     }
 }
 
@@ -105,7 +200,7 @@ fn build_filter(query_state: SearchState) -> CustomFilter {
 
 fn build_sorter(query_state: SearchState) -> CustomSorter {
     CustomSorter::new(move |obj1, obj2| {
-        let query = query_state.borrow();
+        let query = query_state.borrow().clone();
         if query.is_empty() {
             return Ordering::Equal.into();
         }
@@ -169,11 +264,33 @@ fn build_factory(query_state: SearchState) -> SignalListItemFactory {
             return;
         };
 
+        let marked = item_object.is_marked();
+
         let query = query_state.borrow();
         if query.is_empty() {
-            title_label.set_markup(&glib::markup_escape_text(&item_object.title()));
+            let base = glib::markup_escape_text(&item_object.title());
+            if marked {
+                title_label.set_markup(&format!(
+                    "<span foreground='#3584e4' weight='bold'>✓ </span>{}",
+                    base
+                ));
+                row.add_css_class("marked-row");
+            } else {
+                title_label.set_markup(&base);
+                row.remove_css_class("marked-row");
+            }
         } else {
-            title_label.set_markup(&highlight_title(&item_object.title(), &query));
+            let highlighted = highlight_title(&item_object.title(), &query);
+            if marked {
+                title_label.set_markup(&format!(
+                    "<span foreground='#3584e4' weight='bold'>✓ </span>{}",
+                    highlighted
+                ));
+                row.add_css_class("marked-row");
+            } else {
+                title_label.set_markup(&highlighted);
+                row.remove_css_class("marked-row");
+            }
         }
         value_label.set_label(&item_object.value());
     });
@@ -226,10 +343,12 @@ fn highlight_title(title: &str, query: &str) -> String {
 
     for c in title.chars() {
         if qi < chars.len() && c.to_lowercase().next() == Some(chars[qi]) {
-            result.push_str(&format!(
+            let escaped = glib::markup_escape_text(&c.to_string());
+            let _ = write!(
+                result,
                 "<span foreground='#3584e4' weight='bold'>{}</span>",
-                glib::markup_escape_text(&c.to_string())
-            ));
+                escaped
+            );
             qi += 1;
         } else {
             result.push_str(&glib::markup_escape_text(&c.to_string()));

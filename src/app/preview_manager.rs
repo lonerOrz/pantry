@@ -1,44 +1,28 @@
-use crate::services::preview::{PreviewPayload, PreviewService};
+use crate::services::preview::{PreviewPayload, ProdPreviewService};
 use crate::ui::list::ListState;
 use crate::ui::preview::PreviewArea;
 use gtk4::{gio, glib};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use crate::cache::CacheAdapter;
-use crate::services::preview::{CommandExecutor, ImageDecoder};
+/// Abstract preview update interface — erases C, E, D generics from the UI layer
+pub trait PreviewUpdater {
+    fn update_preview(
+        &self,
+        list_state: &ListState,
+        preview_area_rc_opt: &Option<Rc<RefCell<PreviewArea>>>,
+    );
+}
 
-pub struct PreviewManager<
-    C: CacheAdapter + Clone,
-    E: CommandExecutor + Clone,
-    D: ImageDecoder + Clone,
-> {
-    service: PreviewService<C, E, D>,
+#[derive(Clone)]
+pub struct PreviewManager {
+    service: ProdPreviewService,
     next_task_id: Cell<u64>,
     active_task_id: Cell<u64>,
 }
-impl<
-    C: CacheAdapter + Clone + 'static,
-    E: CommandExecutor + Clone + 'static,
-    D: ImageDecoder + Clone + 'static,
-> Clone for PreviewManager<C, E, D>
-{
-    fn clone(&self) -> Self {
-        Self {
-            service: self.service.clone(),
-            next_task_id: Cell::new(self.next_task_id.get()),
-            active_task_id: Cell::new(self.active_task_id.get()),
-        }
-    }
-}
 
-impl<
-    C: CacheAdapter + Clone + 'static,
-    E: CommandExecutor + Clone + 'static,
-    D: ImageDecoder + Clone + 'static,
-> PreviewManager<C, E, D>
-{
-    pub fn new(service: PreviewService<C, E, D>) -> Self {
+impl PreviewManager {
+    pub fn new(service: ProdPreviewService) -> Self {
         Self {
             service,
             next_task_id: Cell::new(1),
@@ -101,5 +85,15 @@ impl<
                 }
             }
         });
+    }
+}
+
+impl PreviewUpdater for PreviewManager {
+    fn update_preview(
+        &self,
+        list_state: &ListState,
+        preview_area_rc_opt: &Option<Rc<RefCell<PreviewArea>>>,
+    ) {
+        self.update_preview(list_state, preview_area_rc_opt);
     }
 }

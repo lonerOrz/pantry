@@ -1,6 +1,9 @@
 use std::io;
 use std::time::Duration;
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 #[derive(Debug, Clone)]
 pub struct CommandOutput {
     pub success: bool,
@@ -35,13 +38,22 @@ impl CommandExecutor for ShellExec {
         args: &[&str],
         timeout_secs: u64,
     ) -> io::Result<CommandOutput> {
-        let child = std::process::Command::new(program)
-            .args(args)
+        let mut cmd = std::process::Command::new(program);
+        cmd.args(args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?;
+            .stderr(std::process::Stdio::piped());
 
+        // Put child in its own process group so we can kill the entire tree on timeout
+        #[cfg(unix)]
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setpgid(0, 0);
+                Ok(())
+            });
+        }
+
+        let child = cmd.spawn()?;
         let pid = child.id();
         let (tx, rx) = std::sync::mpsc::channel();
 
@@ -59,10 +71,21 @@ impl CommandExecutor for ShellExec {
                 })
             }
             Err(_) => {
-                let _ = std::process::Command::new("kill")
-                    .arg("-9")
-                    .arg(pid.to_string())
-                    .output();
+                // Kill entire process group (negative PID = process group)
+                #[cfg(unix)]
+                unsafe {
+                    libc::kill(-(pid as libc::pid_t), libc::SIGKILL);
+                }
+
+                #[cfg(not(unix))]
+                {
+                    // Non-Unix fallback: only kills the parent process
+                    let _ = std::process::Command::new("kill")
+                        .arg("-9")
+                        .arg(pid.to_string())
+                        .output();
+                }
+
                 Err(io::Error::new(
                     io::ErrorKind::TimedOut,
                     format!("Command timed out after {} seconds", timeout_secs),

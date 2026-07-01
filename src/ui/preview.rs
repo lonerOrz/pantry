@@ -1,6 +1,5 @@
 use crate::domain::item::Item;
 use crate::services::preview::PreviewPayload;
-use gdk_pixbuf::Pixbuf;
 use gtk4::prelude::*;
 use gtk4::{Align, Grid, Label, Picture, ScrolledWindow, TextView};
 
@@ -74,7 +73,7 @@ impl PreviewArea {
     }
 
     pub fn render(&self, payload: PreviewPayload, item: &Item) {
-        if item.is_picture_mode() {
+        if matches!(item.display, crate::domain::DisplayMode::Picture) {
             self.details_scrolled.set_visible(true);
             self.title_label
                 .set_markup(&format!("<b>{}</b>", glib::markup_escape_text(&item.title)));
@@ -88,10 +87,6 @@ impl PreviewArea {
         self.content_scrolled.set_child(None::<&gtk4::Widget>);
 
         match payload {
-            PreviewPayload::None => {
-                let label = Label::new(Some("No image selected"));
-                self.set_content(&label);
-            }
             PreviewPayload::Text(text) => {
                 let text_view = create_text_view(&text);
                 let scrolled = create_text_scrolled(&text_view);
@@ -102,16 +97,15 @@ impl PreviewArea {
                 width,
                 height,
             } => {
-                let pixbuf = Pixbuf::from_bytes(
-                    &glib::Bytes::from(&bytes[..]),
-                    gdk_pixbuf::Colorspace::Rgb,
-                    true,
-                    8,
+                let gbytes = glib::Bytes::from(&bytes[..]);
+                let texture = gtk4::gdk::MemoryTexture::new(
                     width,
                     height,
-                    width * 4,
+                    gtk4::gdk::MemoryFormat::R8g8b8a8,
+                    &gbytes,
+                    (width * 4) as usize,
                 );
-                let picture = Picture::for_pixbuf(&pixbuf);
+                let picture = Picture::for_paintable(&texture);
                 picture.set_halign(Align::Center);
                 picture.set_valign(Align::Center);
                 picture.set_hexpand(true);

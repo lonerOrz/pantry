@@ -38,11 +38,10 @@
             inherit system pkgs lib;
           }
         );
-    in
-    {
-      packages = forAllSystems (
-        { pkgs, lib, ... }:
-        let
+
+      commonDeps =
+        { pkgs, lib }:
+        {
           buildInputs =
             with pkgs;
             [
@@ -61,6 +60,13 @@
           nativeBuildInputs = with pkgs; [
             pkg-config
           ];
+        };
+    in
+    {
+      packages = forAllSystems (
+        { pkgs, lib, ... }:
+        let
+          deps = commonDeps { inherit pkgs lib; };
 
           package = pkgs.rustPlatform.buildRustPackage {
             pname = cargoToml.package.name;
@@ -70,7 +76,7 @@
 
             cargoLock.lockFile = ./Cargo.lock;
 
-            inherit buildInputs nativeBuildInputs;
+            inherit (deps) buildInputs nativeBuildInputs;
 
             meta = {
               description = "A generic selector for various types of entries";
@@ -91,28 +97,11 @@
       devShells = forAllSystems (
         { pkgs, lib, ... }:
         let
-          buildInputs =
-            with pkgs;
-            [
-              gtk4
-              glib
-              graphene
-              gdk-pixbuf
-              cairo
-              pango
-              harfbuzz
-            ]
-            ++ lib.optionals pkgs.stdenv.isDarwin [
-              libiconv
-            ];
-
-          nativeBuildInputs = with pkgs; [
-            pkg-config
-          ];
+          deps = commonDeps { inherit pkgs lib; };
         in
         {
           default = pkgs.mkShell {
-            inherit buildInputs nativeBuildInputs;
+            inherit (deps) buildInputs nativeBuildInputs;
 
             packages = with pkgs; [
               rustc
@@ -122,9 +111,9 @@
               clippy
             ];
 
-            LD_LIBRARY_PATH = lib.optionalString (!pkgs.stdenv.isDarwin) (lib.makeLibraryPath buildInputs);
+            LD_LIBRARY_PATH = lib.optionalString (!pkgs.stdenv.isDarwin) (lib.makeLibraryPath deps.buildInputs);
 
-            DYLD_LIBRARY_PATH = lib.optionalString pkgs.stdenv.isDarwin (lib.makeLibraryPath buildInputs);
+            DYLD_LIBRARY_PATH = lib.optionalString pkgs.stdenv.isDarwin (lib.makeLibraryPath deps.buildInputs);
           };
         }
       );

@@ -1,16 +1,38 @@
 use clap::Parser;
 use gtk4::{Application, gio, prelude::*};
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::app::{
-    event_handlers::EventHandler,
+    event_handlers,
     preview_manager::PreviewManager,
-    ui_builder::{UiBuilder, UiMode},
+    ui_builder::{self, UiMode},
 };
+use crate::domain::DisplayMode;
 use crate::services::preview::create_prod_preview_service;
+use crate::services::process::ShellExec;
 use crate::ui::list::ListState;
 use crate::window_state::WindowState;
+
+fn parse_config(config_path: &str) -> Result<crate::config::Config, String> {
+    let content = std::fs::read_to_string(config_path)
+        .map_err(|e| format!("Failed to read config file {}: {}", config_path, e))?;
+    toml::from_str(&content)
+        .map_err(|e| format!("Failed to parse config file {}: {}", config_path, e))
+}
+
+fn get_default_config_path() -> String {
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("pantry");
+
+    if let Err(e) = std::fs::create_dir_all(&config_dir) {
+        log::warn!("Failed to create config directory: {}", e);
+    }
+
+    config_dir.join("config.toml").to_string_lossy().to_string()
+}
 
 #[derive(Debug, Parser)]
 #[command(
@@ -18,7 +40,7 @@ use crate::window_state::WindowState;
     about = "A generic selector for various types of entries"
 )]
 pub struct Args {
-    #[arg(short = 'f', long, default_value_t = crate::services::loader::get_default_config_path())]
+    #[arg(short = 'f', long, default_value_t = get_default_config_path())]
     pub config: String,
 
     #[arg(short = 'c', long = "category")]
@@ -26,32 +48,26 @@ pub struct Args {
 
     #[arg(short = 'd', long = "display")]
     pub display: Option<String>,
-}
 
-pub enum InputMode {
-    Stdin,
-    Config,
+    #[arg(short = 'm', long = "multi", help = "Enable multi-selection mode")]
+    pub multi: bool,
 }
 
 pub struct PantryApp {
     args: Args,
-    input_mode: InputMode,
+    is_stdin: bool,
     window_state: WindowState,
 }
 
 impl PantryApp {
     pub fn new() -> Self {
         let args = Args::parse();
-        let input_mode = if is_stdin_piped_or_redirected() {
-            InputMode::Stdin
-        } else {
-            InputMode::Config
-        };
+        let is_stdin = is_stdin_piped_or_redirected();
         let window_state = WindowState::load();
 
         PantryApp {
             args,
-            input_mode,
+            is_stdin,
             window_state,
         }
     }
@@ -65,25 +81,41 @@ impl PantryApp {
     }
 
     fn build_ui(&self, app: &Application) {
-        let preview_manager = Rc::new(RefCell::new(PreviewManager::new(
-            create_prod_preview_service(),
-        )));
+        use crate::app::preview_manager::PreviewUpdater;
+
+        let raw_manager = PreviewManager::new(create_prod_preview_service());
+        let preview_manager: Rc<RefCell<dyn PreviewUpdater>> = Rc::new(RefCell::new(raw_manager));
 
         let search_query: crate::ui::search::SearchState = Rc::new(RefCell::new(String::new()));
 
-        let mode = match &self.input_mode {
-            InputMode::Stdin => UiMode::Stdin,
-            InputMode::Config => {
-                let display_mode = crate::config::get_config_display_mode(
-                    &self.args.config,
-                    &self.args.category,
-                    &self.args.display,
-                );
-                UiMode::Config { display_mode }
+        let parsed_config = if !self.is_stdin {
+            Some(parse_config(&self.args.config))
+        } else {
+            None
+        };
+
+        let mode = if self.is_stdin {
+            UiMode::Stdin
+        } else {
+            match parsed_config.as_ref().unwrap() {
+                Ok(config) => {
+                    let display_mode = crate::config::get_config_display_mode(
+                        config,
+                        &self.args.category,
+                        &self.args.display,
+                    );
+                    UiMode::Config { display_mode }
+                }
+                Err(e) => {
+                    log::error!("{}", e);
+                    UiMode::Config {
+                        display_mode: DisplayMode::Text,
+                    }
+                }
             }
         };
 
-        let (window, list_state, preview_area_rc_opt, search_entry) = UiBuilder::build_ui(
+        let (window, list_state, preview_area_rc_opt, search_entry) = ui_builder::build_ui(
             &self.window_state,
             app,
             search_query.clone(),
@@ -91,17 +123,17 @@ impl PantryApp {
             &preview_manager,
         );
 
-        EventHandler::setup_keyboard_controller(
+        event_handlers::setup_keyboard_controller(
             &window,
             &list_state,
             &search_entry,
-            preview_area_rc_opt.clone(),
+            self.args.multi,
         );
 
-        if matches!(self.input_mode, InputMode::Config) {
+        if let Some(Ok(config)) = parsed_config {
             self.load_items_from_config(
                 &list_state,
-                &self.args.config,
+                config,
                 &self.args.category,
                 &self.args.display,
                 preview_area_rc_opt.clone(),
@@ -116,23 +148,14 @@ impl PantryApp {
     fn load_items_from_config(
         &self,
         list_state: &ListState,
-        config_path: &str,
+        config: crate::config::Config,
         category_filter: &Option<String>,
         display_arg: &Option<String>,
         preview_area_rc_opt: Option<
             std::rc::Rc<std::cell::RefCell<crate::ui::preview::PreviewArea>>,
         >,
-        preview_manager: &Rc<
-            RefCell<
-                PreviewManager<
-                    crate::cache::CacheManager,
-                    crate::services::preview::ShellExec,
-                    crate::services::preview::GdkPixbufDecoder,
-                >,
-            >,
-        >,
+        preview_manager: &Rc<RefCell<dyn crate::app::preview_manager::PreviewUpdater>>,
     ) {
-        let config_path = config_path.to_string();
         let category_filter = category_filter.clone();
         let display_arg = display_arg.clone();
         let list_state = list_state.clone();
@@ -141,11 +164,12 @@ impl PantryApp {
 
         glib::spawn_future_local(async move {
             let load_result = gio::spawn_blocking(move || {
-                let config = crate::services::loader::parse_config(&config_path)?;
-                let processed_items = crate::services::pipeline::ItemPipeline::run(
+                let executor = ShellExec;
+                let processed_items = crate::services::pipeline::run(
                     &config,
                     &category_filter,
                     &display_arg,
+                    &executor,
                 );
                 Ok::<Vec<crate::domain::item::Item>, String>(processed_items)
             })
@@ -154,7 +178,7 @@ impl PantryApp {
             let processed_items = match load_result {
                 Ok(Ok(items)) => items,
                 Ok(Err(e)) => {
-                    eprintln!("{}", e);
+                    log::error!("{}", e);
                     return;
                 }
                 Err(e) => {
@@ -165,7 +189,7 @@ impl PantryApp {
                     } else {
                         "Unknown panic payload"
                     };
-                    eprintln!(
+                    log::error!(
                         "Failed to load config items (thread panicked): {}",
                         panic_msg
                     );
@@ -194,18 +218,6 @@ impl PantryApp {
 }
 
 fn is_stdin_piped_or_redirected() -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::FileTypeExt;
-        if let Ok(metadata) = std::fs::metadata("/dev/stdin") {
-            let file_type = metadata.file_type();
-            file_type.is_fifo() || file_type.is_file()
-        } else {
-            false
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        !atty::is(atty::Stream::Stdin)
-    }
+    use std::io::IsTerminal;
+    !std::io::stdin().is_terminal()
 }

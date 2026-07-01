@@ -1,14 +1,19 @@
+pub mod decoder;
+pub mod detector;
+pub mod mem_cache;
+pub mod video;
+
 use crate::cache::{CacheAdapter, CacheManager};
 use crate::domain::item::Item;
-use gdk_pixbuf::Pixbuf;
-use image::ImageReader;
+use crate::services::process::CommandExecutor;
 use std::path::Path;
 use std::sync::Arc;
 
+pub use decoder::{GdkPixbufDecoder, ImageDecoder};
+use mem_cache::MemoryCache;
+
 #[derive(Debug, Clone)]
 pub enum PreviewPayload {
-    #[allow(dead_code)]
-    None,
     Text(String),
     Image {
         bytes: Arc<Vec<u8>>,
@@ -18,45 +23,13 @@ pub enum PreviewPayload {
     Error(String),
 }
 
-pub use crate::services::process::{CommandExecutor, ShellExec};
-
-pub trait ImageDecoder: Send + Sync {
-    fn load_from_path(
-        &self,
-        path: &Path,
-        max_width: i32,
-        max_height: i32,
-    ) -> Option<(Vec<u8>, i32, i32)>;
-}
-
-#[derive(Clone)]
-pub struct GdkPixbufDecoder;
-
-impl ImageDecoder for GdkPixbufDecoder {
-    fn load_from_path(
-        &self,
-        path: &Path,
-        max_width: i32,
-        max_height: i32,
-    ) -> Option<(Vec<u8>, i32, i32)> {
-        if path
-            .extension()
-            .and_then(|s| s.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("gif"))
-        {
-            load_gif_first_frame(path, max_width, max_height)
-        } else {
-            load_image_data_raw(path, max_width, max_height)
-        }
-    }
-}
-
-pub type ProdPreviewService = PreviewService<CacheManager, ShellExec, GdkPixbufDecoder>;
+pub type ProdPreviewService =
+    PreviewService<CacheManager, crate::services::process::ShellExec, GdkPixbufDecoder>;
 
 pub fn create_prod_preview_service() -> ProdPreviewService {
     ProdPreviewService::new(
-        crate::cache::CacheManager::new(),
-        ShellExec,
+        CacheManager::new(),
+        crate::services::process::ShellExec,
         GdkPixbufDecoder,
     )
 }
@@ -70,6 +43,7 @@ pub struct PreviewService<
     cache: C,
     executor: E,
     decoder: D,
+    mem_cache: MemoryCache,
 }
 
 impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clone>
@@ -80,27 +54,16 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
             cache,
             executor,
             decoder,
+            mem_cache: MemoryCache::new(crate::constants::MEM_CACHE_MAX_SIZE),
         }
     }
 
-    pub fn try_cache(&self, item: &Item) -> Option<PreviewPayload> {
-        if item.preview_template.is_some()
-            || matches!(item.source, crate::config::SourceMode::Dynamic)
-        {
+    fn load_valid_cache(&self, category: &str, path: &Path) -> Option<PreviewPayload> {
+        if !path.exists() || !path.is_file() {
             return None;
         }
-        if !matches!(item.display, crate::config::DisplayMode::Picture) {
-            return None;
-        }
-        let expanded_path = crate::utils::expand_tilde(&item.value);
-        if !expanded_path.exists() || !expanded_path.is_file() {
-            return None;
-        }
-        if is_video_file(&expanded_path) {
-            return None;
-        }
-        let cache_path = self.cache.get_cache_path(&item.category, &expanded_path);
-        if self.cache.is_cache_valid(&cache_path, &expanded_path)
+        let cache_path = self.cache.get_cache_path(category, path);
+        if self.cache.is_cache_valid(&cache_path, path)
             && let Some((bytes, w, h)) = self.cache.load_raw_cache(&cache_path)
         {
             return Some(PreviewPayload::Image {
@@ -112,16 +75,41 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
         None
     }
 
+    pub fn try_cache(&self, item: &Item) -> Option<PreviewPayload> {
+        if item.preview_template.is_some()
+            || matches!(item.source, crate::domain::SourceMode::Dynamic)
+        {
+            return None;
+        }
+        if !matches!(item.display, crate::domain::DisplayMode::Picture) {
+            return None;
+        }
+        let expanded_path = crate::utils::expand_tilde(&item.value);
+        if video::is_video(&expanded_path) {
+            return None;
+        }
+
+        if let Some(payload) = self.mem_cache.get(&expanded_path) {
+            return Some(payload);
+        }
+
+        if let Some(payload) = self.load_valid_cache(&item.category, &expanded_path) {
+            self.mem_cache.insert(expanded_path, payload.clone());
+            return Some(payload);
+        }
+        None
+    }
+
     pub fn resolve_payload(&self, item: &Item) -> PreviewPayload {
         if item.preview_template.is_some()
-            || matches!(item.source, crate::config::SourceMode::Dynamic)
+            || matches!(item.source, crate::domain::SourceMode::Dynamic)
         {
             return self.resolve_dynamic(item);
         }
 
         match item.display {
-            crate::config::DisplayMode::Text => PreviewPayload::Text(item.value.clone()),
-            crate::config::DisplayMode::Picture => self.resolve_image(item),
+            crate::domain::DisplayMode::Text => PreviewPayload::Text(item.value.clone()),
+            crate::domain::DisplayMode::Picture => self.resolve_image(item),
         }
     }
 
@@ -131,20 +119,20 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
             return PreviewPayload::Text(item.value.clone());
         }
 
-        let cache_path = self.cache.get_cache_path(&item.category, &expanded_path);
-
-        if self.cache.is_cache_valid(&cache_path, &expanded_path)
-            && let Some((bytes, w, h)) = self.cache.load_raw_cache(&cache_path)
-        {
-            return PreviewPayload::Image {
-                bytes: Arc::new(bytes),
-                width: w,
-                height: h,
-            };
+        if let Some(payload) = self.mem_cache.get(&expanded_path) {
+            return payload;
         }
 
-        if is_video_file(&expanded_path) {
-            generate_video_thumbnail(
+        if let Some(payload) = self.load_valid_cache(&item.category, &expanded_path) {
+            self.mem_cache
+                .insert(expanded_path.clone(), payload.clone());
+            return payload;
+        }
+
+        let cache_path = self.cache.get_cache_path(&item.category, &expanded_path);
+
+        let payload = if video::is_video(&expanded_path) {
+            video::generate_thumbnail(
                 &expanded_path,
                 &cache_path,
                 &self.cache,
@@ -152,25 +140,40 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
                 &self.executor,
             )
         } else {
-            generate_image_payload(&expanded_path, &cache_path, &self.cache, &self.decoder)
+            let max_w = crate::constants::IMAGE_PREVIEW_WIDTH;
+            let max_h = crate::constants::IMAGE_PREVIEW_HEIGHT;
+
+            if let Some((bytes, w, h)) = self.decoder.load_from_path(&expanded_path, max_w, max_h) {
+                let _ = self.cache.save_raw_cache(&cache_path, &bytes, w, h);
+                PreviewPayload::Image {
+                    bytes: Arc::new(bytes),
+                    width: w,
+                    height: h,
+                }
+            } else {
+                PreviewPayload::Error("Failed to decode image".to_string())
+            }
+        };
+
+        if let PreviewPayload::Image { .. } = &payload {
+            self.mem_cache.insert(expanded_path, payload.clone());
         }
+
+        payload
     }
 
     fn resolve_dynamic(&self, item: &Item) -> PreviewPayload {
+        let safe_value = crate::utils::escape_shell_arg(&item.value);
+
         let preview_cmd = if let Some(ref template) = item.preview_template {
-            template.replace("{}", &item.value)
+            template.replace("{}", &safe_value)
         } else {
-            format!("cliphist decode {}", item.value)
+            crate::constants::DEFAULT_CLIPBOARD_CMD.replace("{}", &safe_value)
         };
 
         match self.executor.execute("sh", &["-c", &preview_cmd]) {
             Ok(output) if output.success => {
-                let is_binary = output
-                    .stdout
-                    .iter()
-                    .any(|&b| b == 0 || (b < 32 && b != b'\n' && b != b'\t'));
-
-                if is_binary {
+                if detector::is_binary(&output.stdout) {
                     use std::io::Write;
                     use tempfile::NamedTempFile;
 
@@ -209,248 +212,10 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
     }
 }
 
-fn is_video_file(path: &Path) -> bool {
-    match path.extension().and_then(|s| s.to_str()) {
-        Some(ext) => matches!(
-            ext.to_lowercase().as_str(),
-            "mp4" | "webm" | "mkv" | "avi" | "mov" | "wmv" | "flv" | "m4v"
-        ),
-        None => false,
-    }
-}
-
-fn generate_image_payload(
-    path: &Path,
-    cache_path: &Path,
-    cache: &dyn CacheAdapter,
-    decoder: &dyn ImageDecoder,
-) -> PreviewPayload {
-    let max_w = crate::constants::IMAGE_PREVIEW_WIDTH;
-    let max_h = crate::constants::IMAGE_PREVIEW_HEIGHT;
-
-    if let Some((bytes, w, h)) = decoder.load_from_path(path, max_w, max_h) {
-        let _ = cache.save_raw_cache(cache_path, &bytes, w, h);
-        PreviewPayload::Image {
-            bytes: Arc::new(bytes),
-            width: w,
-            height: h,
-        }
-    } else {
-        PreviewPayload::Error("Failed to decode image".to_string())
-    }
-}
-
-fn generate_video_thumbnail(
-    video_path: &Path,
-    cache_path: &Path,
-    cache: &dyn CacheAdapter,
-    decoder: &dyn ImageDecoder,
-    executor: &dyn CommandExecutor,
-) -> PreviewPayload {
-    let video_stem = match video_path.file_stem().and_then(|s| s.to_str()) {
-        Some(s) => s,
-        None => return PreviewPayload::Error("Invalid video filename".to_string()),
-    };
-
-    let temp_png = cache_path.with_file_name(format!("{}_thumb_temp.png", video_stem));
-
-    let video_str = video_path.to_string_lossy();
-    let temp_str = temp_png.to_string_lossy();
-    let scale = crate::constants::FFMPEG_THUMB_SCALE;
-    let quality = crate::constants::FFMPEG_THUMB_QUALITY;
-    let args: [&str; 14] = [
-        "-y",
-        "-ss",
-        "1",
-        "-i",
-        &video_str,
-        "-vframes",
-        "1",
-        "-vf",
-        &format!("scale={scale}:-1"),
-        "-preset",
-        "ultrafast",
-        "-q:v",
-        &quality.to_string(),
-        &temp_str,
-    ];
-
-    match executor.execute("ffmpeg", &args) {
-        Ok(output) if output.success => {
-            if let Some((raw_data, w, h)) =
-                decoder.load_from_path(&temp_png, scale, crate::constants::IMAGE_PREVIEW_HEIGHT)
-            {
-                let _ = cache.save_raw_cache(cache_path, &raw_data, w, h);
-                let _ = std::fs::remove_file(&temp_png);
-                PreviewPayload::Image {
-                    bytes: Arc::new(raw_data),
-                    width: w,
-                    height: h,
-                }
-            } else {
-                let _ = std::fs::remove_file(&temp_png);
-                PreviewPayload::Error("Failed to decode video thumbnail".to_string())
-            }
-        }
-        _ => {
-            let _ = std::fs::remove_file(&temp_png);
-            PreviewPayload::Error("FFmpeg execution failed".to_string())
-        }
-    }
-}
-
-fn load_gif_first_frame(
-    path: &Path,
-    max_width: i32,
-    max_height: i32,
-) -> Option<(Vec<u8>, i32, i32)> {
-    let reader = match ImageReader::open(path) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to open image file {}: {}", path.display(), e);
-            return None;
-        }
-    };
-    let reader = match reader.with_guessed_format() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to guess format for {}: {}", path.display(), e);
-            return None;
-        }
-    };
-
-    let (orig_w, orig_h) = match reader.into_dimensions() {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("Failed to get dimensions for {}: {}", path.display(), e);
-            return None;
-        }
-    };
-    let pixel_bytes = orig_w as u64 * orig_h as u64 * 4;
-    if pixel_bytes > crate::constants::MAX_DECODE_PIXEL_BYTES {
-        return None;
-    }
-
-    let img = match ImageReader::open(path) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to open image {}: {}", path.display(), e);
-            return None;
-        }
-    };
-
-    let reader = match img.with_guessed_format() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to guess format for {}: {}", path.display(), e);
-            return None;
-        }
-    };
-
-    let img = match reader.decode() {
-        Ok(i) => i,
-        Err(e) => {
-            eprintln!("Failed to decode image {}: {}", path.display(), e);
-            return None;
-        }
-    };
-
-    let (width, height) = (img.width(), img.height());
-
-    let (target_width, target_height) = {
-        let ratio = (max_width as f32 / width as f32)
-            .min(max_height as f32 / height as f32)
-            .min(1.0);
-        (
-            (width as f32 * ratio) as u32,
-            (height as f32 * ratio) as u32,
-        )
-    };
-
-    let resized = if target_width < width || target_height < height {
-        img.resize_exact(
-            target_width,
-            target_height,
-            image::imageops::FilterType::Lanczos3,
-        )
-    } else {
-        img
-    };
-
-    let rgba = resized.to_rgba8();
-    let (width, height) = (rgba.width(), rgba.height());
-    Some((rgba.into_raw(), width as i32, height as i32))
-}
-
-fn load_image_data_raw(
-    path: &Path,
-    max_width: i32,
-    max_height: i32,
-) -> Option<(Vec<u8>, i32, i32)> {
-    if path
-        .extension()
-        .and_then(|s| s.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("gif"))
-    {
-        return load_gif_first_frame(path, max_width, max_height);
-    }
-
-    let pixbuf = match Pixbuf::from_file_at_scale(path, max_width, max_height, true) {
-        Ok(pb) => pb,
-        Err(e) => {
-            eprintln!("Failed to load Pixbuf from file {}: {}", path.display(), e);
-            return None;
-        }
-    };
-    let width = pixbuf.width();
-    let height = pixbuf.height();
-    let has_alpha = pixbuf.has_alpha();
-    let rowstride = pixbuf.rowstride() as usize;
-
-    let pixel_bytes = pixbuf.read_pixel_bytes();
-    let pixels: &[u8] = pixel_bytes.as_ref();
-
-    let mut rgba_data = Vec::with_capacity((width * height * 4) as usize);
-    let n_channels = pixbuf.n_channels() as usize;
-
-    for y in 0..height as usize {
-        let row_start = y * rowstride;
-        for x in 0..width as usize {
-            let pixel_start = row_start + x * n_channels;
-            if pixel_start + n_channels > pixels.len() {
-                break;
-            }
-
-            match n_channels {
-                1 => {
-                    let v = pixels[pixel_start];
-                    rgba_data.extend_from_slice(&[v, v, v, 255]);
-                }
-                2 => {
-                    let v = pixels[pixel_start];
-                    let a = pixels[pixel_start + 1];
-                    rgba_data.extend_from_slice(&[v, v, v, a]);
-                }
-                _ => {
-                    rgba_data.extend_from_slice(&pixels[pixel_start..pixel_start + 3]);
-                    let a = if has_alpha && n_channels >= 4 {
-                        pixels[pixel_start + 3]
-                    } else {
-                        255
-                    };
-                    rgba_data.push(a);
-                }
-            }
-        }
-    }
-
-    Some((rgba_data, width, height))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{DisplayMode, SourceMode};
+    use crate::domain::DisplayMode;
     use crate::services::process::MockExec;
     use std::collections::HashMap;
     use std::io;
@@ -554,44 +319,19 @@ mod tests {
     }
 
     fn text_item(value: &str) -> Item {
-        Item::builder()
-            .title("test".into())
-            .value(value.into())
-            .category("cat".into())
-            .display(DisplayMode::Text)
-            .source(SourceMode::Config)
-            .build()
+        Item::config("test", value, "cat", DisplayMode::Text)
     }
 
     fn dynamic_item(value: &str) -> Item {
-        Item::builder()
-            .title("test".into())
-            .value(value.into())
-            .category("cat".into())
-            .display(DisplayMode::Text)
-            .source(SourceMode::Dynamic)
-            .build()
+        Item::dynamic("test", value, None)
     }
 
     fn dynamic_item_with_template(value: &str, template: &str) -> Item {
-        Item::builder()
-            .title("test".into())
-            .value(value.into())
-            .category("cat".into())
-            .display(DisplayMode::Text)
-            .source(SourceMode::Dynamic)
-            .preview_template(template.into())
-            .build()
+        Item::dynamic("test", value, Some(template.into()))
     }
 
     fn picture_item(path: &str) -> Item {
-        Item::builder()
-            .title("test".into())
-            .value(path.into())
-            .category("cat".into())
-            .display(DisplayMode::Picture)
-            .source(SourceMode::Config)
-            .build()
+        Item::config("test", path, "cat", DisplayMode::Picture)
     }
 
     #[test]

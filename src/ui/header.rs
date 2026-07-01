@@ -1,11 +1,8 @@
 use gtk4::{AboutDialog, ApplicationWindow, Button, HeaderBar, Label, SearchEntry, prelude::*};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use crate::app::preview_manager::PreviewManager;
 use crate::ui::list::ListState;
-use crate::ui::preview;
-
-use crate::cache::CacheAdapter;
-use crate::services::preview::{CommandExecutor, ImageDecoder};
 
 pub fn build_header_bar() -> (HeaderBar, SearchEntry, Button) {
     let header_bar = HeaderBar::new();
@@ -48,32 +45,49 @@ pub fn connect_about_dialog(window: &ApplicationWindow, menu_button: &Button) {
     });
 }
 
-pub fn connect_search_changed<
-    C: CacheAdapter + Clone + 'static,
-    E: CommandExecutor + Clone + 'static,
-    D: ImageDecoder + Clone + 'static,
->(
+pub fn connect_search_changed<F>(
     search_entry: &SearchEntry,
     list_state: &ListState,
     query_state: &crate::ui::search::SearchState,
-    preview_area_rc_opt: &Option<std::rc::Rc<std::cell::RefCell<preview::PreviewArea>>>,
-    preview_manager: &std::rc::Rc<std::cell::RefCell<PreviewManager<C, E, D>>>,
-) {
+    on_search_changed: F,
+) where
+    F: Fn() + 'static,
+{
     let list_state_clone = list_state.clone();
     let query_state_clone = query_state.clone();
-    let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
-    let preview_manager_clone = preview_manager.clone();
+    let on_search_changed = Rc::new(on_search_changed);
+    let debounce_timeout_id: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
 
     search_entry.connect_search_changed(move |entry| {
-        {
-            let mut query = query_state_clone.borrow_mut();
-            query.clear();
-            query.push_str(&entry.text());
+        let list_state_inner = list_state_clone.clone();
+        let query_state_inner = query_state_clone.clone();
+        let on_search_changed_inner = on_search_changed.clone();
+        let debounce_timeout_inner = debounce_timeout_id.clone();
+        let query_text = entry.text().to_string();
+
+        if let Some(old_id) = debounce_timeout_inner.borrow_mut().take() {
+            old_id.remove();
         }
-        list_state_clone.refresh_filter();
-        list_state_clone.select_first();
-        preview_manager_clone
-            .borrow()
-            .update_preview(&list_state_clone, &preview_area_rc_opt_clone);
+
+        let new_id = glib::timeout_add_local(
+            std::time::Duration::from_millis(crate::constants::SEARCH_DEBOUNCE_MS),
+            move || {
+                debounce_timeout_inner.borrow_mut().take();
+
+                {
+                    let mut query = query_state_inner.borrow_mut();
+                    query.clear();
+                    query.push_str(&query_text);
+                }
+
+                list_state_inner.refresh_filter();
+                list_state_inner.select_first();
+                on_search_changed_inner();
+
+                glib::ControlFlow::Break
+            },
+        );
+
+        debounce_timeout_id.borrow_mut().replace(new_id);
     });
 }

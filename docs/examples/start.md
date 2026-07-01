@@ -29,6 +29,23 @@ Pantry supports several command line options:
 - `-f, --config`: Configuration file path [default: `~/.config/pantry/config.toml`]
 - `-c, --category`: Specify the category to load (load only categories matching the global display mode if not specified)
 - `-d, --display`: Display mode: text or picture (overrides config file setting)
+- `-m, --multi`: Enable multi-selection mode
+
+## Keyboard Shortcuts
+
+Pantry supports multiple keyboard navigation styles so you can keep your hands on the home row:
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate list |
+| `Ctrl+p` / `Ctrl+n` | Navigate list (Emacs style) |
+| `Ctrl+k` / `Ctrl+j` | Navigate list (Vim style) |
+| `Enter` | Confirm selection and output value |
+| `Escape` | Clear search text, or close window if search is empty |
+| `Ctrl+u` | Clear search input instantly |
+| `Ctrl+c` / `Ctrl+g` | Quit immediately |
+| `Tab` | Mark/unmark item in multi-select mode (auto-advances down) |
+| `Shift+Tab` | Mark/unmark item in multi-select mode (moves up) |
 
 ## Configuration
 
@@ -99,6 +116,23 @@ The display mode can be set globally, per category, or overridden with the `-d` 
 ## Piping Input and Output
 
 Pantry now supports both input and output piping, making it more flexible and Unix-like:
+
+### Multi-Selection Mode
+
+Use `-m` to enable multi-selection. Tab marks/unmarks the current item and moves down; Shift+Tab marks and moves up. Press Enter to confirm — marked items are output newline-separated.
+
+```bash
+# Open multiple bookmarks in browser
+pantry -f bookmarks.toml -m | xargs -n 1 xdg-open
+
+# Copy multiple entries to clipboard
+pantry -f bookmarks.toml -m | xclip -selection clipboard
+
+# Set multiple wallpapers
+pantry -f pictures.toml -m | xargs -n 1 nitrogen --set-zoom-fill
+```
+
+If no items are marked, the currently focused item is output (same as single-select behavior).
 
 ### Input Piping
 

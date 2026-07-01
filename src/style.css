@@ -11,15 +11,14 @@
 .pantry-main-frame scrolledwindow,
 .pantry-main-frame viewport,
 .pantry-main-frame grid {
-  background-color: @card_bg !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
+  background-color: @card_bg;
+  box-shadow: none;
+  text-shadow: none;
 }
 
 .pantry-main-frame {
   border: 1px solid @border;
   border-radius: 12px;
-  overflow: hidden;
 }
 
 listview {
@@ -287,4 +286,20 @@ paned > separator {
 .aboutdialog button {
   border-radius: 6px;
   transition: all 120ms ease;
+}
+
+.bookmark-row.marked-row {
+  border-left: 3px solid @accent;
+  background-color: alpha(@accent, 0.04);
+  transition: all 120ms ease;
+}
+
+listview row:hover .bookmark-row.marked-row {
+  background-color: alpha(@accent, 0.08);
+}
+
+listview row:selected .bookmark-row.marked-row,
+listview row:selected:backdrop .bookmark-row.marked-row {
+  background-color: @accent;
+  border-left-color: @theme_selected_fg_color;
 }

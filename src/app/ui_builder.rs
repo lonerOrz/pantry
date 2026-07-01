@@ -6,86 +6,72 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::constants::MAX_ITEMS;
+use crate::domain::DisplayMode;
 use crate::domain::item::Item;
-use crate::domain::{DisplayMode, SourceMode};
 use crate::ui::{header, list::ListState, preview, window};
 use crate::window_state::WindowState;
 
-use crate::app::preview_manager::PreviewManager;
-use crate::cache::CacheAdapter;
-use crate::services::preview::{CommandExecutor, ImageDecoder};
+use crate::app::preview_manager::PreviewUpdater;
 
 pub enum UiMode {
     Stdin,
     Config { display_mode: DisplayMode },
 }
 
-pub struct UiBuilder;
+pub fn build_ui(
+    window_state: &WindowState,
+    app: &Application,
+    query_state: crate::ui::search::SearchState,
+    mode: UiMode,
+    preview_manager: &Rc<RefCell<dyn PreviewUpdater>>,
+) -> (
+    ApplicationWindow,
+    ListState,
+    Option<Rc<RefCell<preview::PreviewArea>>>,
+    SearchEntry,
+) {
+    let display_mode = match &mode {
+        UiMode::Stdin => DisplayMode::Text,
+        UiMode::Config { display_mode } => display_mode.clone(),
+    };
 
-impl UiBuilder {
-    pub fn build_ui<
-        C: CacheAdapter + Clone + 'static,
-        E: CommandExecutor + Clone + 'static,
-        D: ImageDecoder + Clone + 'static,
-    >(
-        window_state: &WindowState,
-        app: &Application,
-        query_state: crate::ui::search::SearchState,
-        mode: UiMode,
-        preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
-    ) -> (
-        ApplicationWindow,
-        ListState,
-        Option<Rc<RefCell<preview::PreviewArea>>>,
-        SearchEntry,
-    ) {
-        let display_mode = match &mode {
-            UiMode::Stdin => DisplayMode::Text,
-            UiMode::Config { display_mode } => display_mode.clone(),
-        };
+    let (window, list_state, preview_area_rc_opt, search_entry, main_widget) = build_ui_shell(
+        window_state,
+        app,
+        &query_state,
+        &display_mode,
+        preview_manager,
+    );
 
-        let (window, list_state, preview_area_rc_opt, search_entry, main_widget) = build_ui_shell(
-            window_state,
-            app,
-            &query_state,
-            &display_mode,
-            preview_manager,
-        );
-
-        if matches!(mode, UiMode::Config { .. }) && window_state.maximized {
-            window.maximize();
-        }
-
-        match mode {
-            UiMode::Stdin => spawn_stdin_reader(&list_state, &display_mode),
-            UiMode::Config { .. } => {}
-        }
-
-        list_state.view.grab_focus();
-
-        setup_preview_updates(
-            &window,
-            &main_widget,
-            &list_state,
-            &preview_area_rc_opt,
-            display_mode,
-            preview_manager,
-        );
-
-        (window, list_state, preview_area_rc_opt, search_entry)
+    if matches!(mode, UiMode::Config { .. }) && window_state.maximized {
+        window.maximize();
     }
+
+    match mode {
+        UiMode::Stdin => spawn_stdin_reader(&list_state, &display_mode),
+        UiMode::Config { .. } => {}
+    }
+
+    list_state.grab_focus();
+
+    setup_preview_updates(
+        &window,
+        &main_widget,
+        &list_state,
+        &preview_area_rc_opt,
+        display_mode,
+        preview_manager,
+    );
+
+    (window, list_state, preview_area_rc_opt, search_entry)
 }
 
-fn build_ui_shell<
-    C: CacheAdapter + Clone + 'static,
-    E: CommandExecutor + Clone + 'static,
-    D: ImageDecoder + Clone + 'static,
->(
+fn build_ui_shell(
     window_state: &WindowState,
     app: &Application,
     query_state: &crate::ui::search::SearchState,
     display_mode: &DisplayMode,
-    preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
+    preview_manager: &Rc<RefCell<dyn PreviewUpdater>>,
 ) -> (
     ApplicationWindow,
     ListState,
@@ -111,13 +97,15 @@ fn build_ui_shell<
 
     search_entry.set_key_capture_widget(Some(&window));
 
-    header::connect_search_changed(
-        &search_entry,
-        &list_state,
-        query_state,
-        &preview_area_rc_opt,
-        preview_manager,
-    );
+    let preview_manager_clone = preview_manager.clone();
+    let list_state_clone = list_state.clone();
+    let preview_area_rc_opt_clone = preview_area_rc_opt.clone();
+
+    header::connect_search_changed(&search_entry, &list_state, query_state, move || {
+        preview_manager_clone
+            .borrow()
+            .update_preview(&list_state_clone, &preview_area_rc_opt_clone);
+    });
 
     (
         window,
@@ -147,25 +135,30 @@ fn spawn_stdin_reader(list_state: &ListState, display_mode: &DisplayMode) {
     let mut stdin_count: usize = 0;
 
     glib::idle_add_local(move || {
-        while let Ok(line) = rx.try_recv() {
-            list_state_clone.append_item(Item {
-                title: line.to_string(),
-                value: line.to_string(),
-                category: "stdin".to_string(),
-                display: display_mode_clone.clone(),
-                source: SourceMode::Config,
-                preview_template: None,
-            });
+        use std::sync::mpsc::TryRecvError;
 
-            stdin_count += 1;
-            if stdin_count >= MAX_ITEMS {
-                return glib::ControlFlow::Break;
-            }
+        let mut batch_count = 0;
 
-            if list_state_clone.selection.selected() == gtk4::INVALID_LIST_POSITION {
-                list_state_clone.select_first();
+        while batch_count < 100 {
+            match rx.try_recv() {
+                Ok(line) => {
+                    list_state_clone.append_item(Item::stdin(line, display_mode_clone.clone()));
+                    stdin_count += 1;
+                    batch_count += 1;
+
+                    if stdin_count >= MAX_ITEMS {
+                        return glib::ControlFlow::Break;
+                    }
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => return glib::ControlFlow::Break,
             }
         }
+
+        if list_state_clone.selected_index() == gtk4::INVALID_LIST_POSITION && stdin_count > 0 {
+            list_state_clone.select_first();
+        }
+
         glib::ControlFlow::Continue
     });
 }
@@ -210,16 +203,15 @@ fn build_main_widget(
     list_stack.add_titled(&empty_box, Some("empty"), "Empty");
 
     let list_stack_clone = list_stack.clone();
-    let sort_model_clone = list_state.sort_model.clone();
 
-    if sort_model_clone.n_items() == 0 {
+    if list_state.n_items() == 0 {
         list_stack_clone.set_visible_child_name("empty");
     } else {
         list_stack_clone.set_visible_child_name("content");
     }
 
-    sort_model_clone.connect_items_changed(move |model, _, _, _| {
-        if model.n_items() == 0 {
+    list_state.connect_items_changed(move |n_items| {
+        if n_items == 0 {
             list_stack_clone.set_visible_child_name("empty");
         } else {
             list_stack_clone.set_visible_child_name("content");
@@ -236,7 +228,7 @@ fn build_content(
     if matches!(display_mode, DisplayMode::Picture) {
         let paned = gtk4::Paned::new(gtk4::Orientation::Horizontal);
 
-        let scrolled = wrap_in_scroll(&list_state.view);
+        let scrolled = wrap_in_scroll(list_state.view());
         scrolled.set_hexpand(true);
         paned.set_start_child(Some(&scrolled));
 
@@ -257,24 +249,20 @@ fn build_content(
         )
     } else {
         let layout = GtkBox::new(Orientation::Vertical, 0);
-        let scrolled = wrap_in_scroll(&list_state.view);
+        let scrolled = wrap_in_scroll(list_state.view());
         layout.append(&scrolled);
 
         (layout.upcast::<gtk4::Widget>(), None)
     }
 }
 
-fn setup_preview_updates<
-    C: CacheAdapter + Clone + 'static,
-    E: CommandExecutor + Clone + 'static,
-    D: ImageDecoder + Clone + 'static,
->(
+fn setup_preview_updates(
     window: &ApplicationWindow,
     main_widget: &gtk4::Widget,
     list_state: &ListState,
     preview_area_rc_opt: &Option<Rc<RefCell<preview::PreviewArea>>>,
     display_mode: DisplayMode,
-    preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
+    preview_manager: &Rc<RefCell<dyn PreviewUpdater>>,
 ) {
     if !matches!(display_mode, DisplayMode::Picture) {
         return;
@@ -288,32 +276,30 @@ fn setup_preview_updates<
 
     let active_timeout_id = Rc::new(RefCell::new(None::<glib::SourceId>));
 
-    list_state
-        .selection
-        .connect_selection_changed(move |_, _, _| {
-            let preview_area_rc_opt_inner = preview_area_rc_opt_clone1.clone();
-            let list_state_inner = list_state_clone.clone();
-            let active_timeout_id_inner = active_timeout_id.clone();
-            let preview_manager_inner = preview_manager_clone1.clone();
+    list_state.connect_selection_changed(move || {
+        let preview_area_rc_opt_inner = preview_area_rc_opt_clone1.clone();
+        let list_state_inner = list_state_clone.clone();
+        let active_timeout_id_inner = active_timeout_id.clone();
+        let preview_manager_inner = preview_manager_clone1.clone();
 
-            if let Some(old_id) = active_timeout_id_inner.borrow_mut().take() {
-                old_id.remove();
-            }
+        if let Some(old_id) = active_timeout_id_inner.borrow_mut().take() {
+            old_id.remove();
+        }
 
-            let new_id = glib::timeout_add_local(
-                std::time::Duration::from_millis(crate::constants::PREVIEW_UPDATE_THROTTLE_MS),
-                move || {
-                    active_timeout_id_inner.borrow_mut().take();
+        let new_id = glib::timeout_add_local(
+            std::time::Duration::from_millis(crate::constants::PREVIEW_UPDATE_THROTTLE_MS),
+            move || {
+                active_timeout_id_inner.borrow_mut().take();
 
-                    preview_manager_inner
-                        .borrow()
-                        .update_preview(&list_state_inner, &preview_area_rc_opt_inner);
-                    glib::ControlFlow::Break
-                },
-            );
+                preview_manager_inner
+                    .borrow()
+                    .update_preview(&list_state_inner, &preview_area_rc_opt_inner);
+                glib::ControlFlow::Break
+            },
+        );
 
-            active_timeout_id.borrow_mut().replace(new_id);
-        });
+        active_timeout_id.borrow_mut().replace(new_id);
+    });
 
     glib::timeout_add_local(
         std::time::Duration::from_millis(crate::constants::INITIAL_PREVIEW_DELAY_MS),
@@ -329,18 +315,6 @@ fn setup_preview_updates<
     );
 
     if let Some(paned_widget) = main_widget.downcast_ref::<gtk4::Paned>() {
-        let window_clone = window.clone();
-        let paned_widget_clone = paned_widget.clone();
-        glib::timeout_add_local(
-            std::time::Duration::from_millis(crate::constants::SELECTION_UPDATE_DELAY_MS * 10),
-            move || {
-                let width = window_clone.default_size().0;
-                let position = (width as f64 * crate::constants::MAX_WINDOW_WIDTH_FRACTION) as i32;
-                paned_widget_clone.set_position(position);
-                glib::ControlFlow::Break
-            },
-        );
-
         let paned_widget_clone = paned_widget.clone();
         window.connect_realize(move |win| {
             let win_clone = win.clone();
