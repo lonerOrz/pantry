@@ -168,7 +168,7 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
         let preview_cmd = if let Some(ref template) = item.preview_template {
             template.replace("{}", &safe_value)
         } else {
-            format!("cliphist decode {}", safe_value)
+            crate::constants::DEFAULT_CLIPBOARD_CMD.replace("{}", &safe_value)
         };
 
         match self.executor.execute("sh", &["-c", &preview_cmd]) {

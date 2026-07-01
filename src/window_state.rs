@@ -25,8 +25,8 @@ impl WindowState {
             && let Ok(contents) = fs::read_to_string(config_path)
             && let Ok(mut state) = toml::from_str::<WindowState>(&contents)
         {
-            state.width = state.width.max(320);
-            state.height = state.height.max(240);
+            state.width = state.width.max(crate::constants::MIN_WINDOW_WIDTH);
+            state.height = state.height.max(crate::constants::MIN_WINDOW_HEIGHT);
             return state;
         }
 
@@ -61,10 +61,10 @@ height = 5
 maximized = false
 "#;
         let mut state: WindowState = toml::from_str(dirty).unwrap();
-        state.width = state.width.max(320);
-        state.height = state.height.max(240);
-        assert_eq!(state.width, 320);
-        assert_eq!(state.height, 240);
+        state.width = state.width.max(crate::constants::MIN_WINDOW_WIDTH);
+        state.height = state.height.max(crate::constants::MIN_WINDOW_HEIGHT);
+        assert_eq!(state.width, crate::constants::MIN_WINDOW_WIDTH);
+        assert_eq!(state.height, crate::constants::MIN_WINDOW_HEIGHT);
     }
 
     #[test]
@@ -74,8 +74,8 @@ height = 800
 maximized = true
 "#;
         let mut state: WindowState = toml::from_str(ok).unwrap();
-        state.width = state.width.max(320);
-        state.height = state.height.max(240);
+        state.width = state.width.max(crate::constants::MIN_WINDOW_WIDTH);
+        state.height = state.height.max(crate::constants::MIN_WINDOW_HEIGHT);
         assert_eq!(state.width, 1200);
         assert_eq!(state.height, 800);
     }

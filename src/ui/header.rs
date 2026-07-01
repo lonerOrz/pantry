@@ -69,21 +69,24 @@ pub fn connect_search_changed<F>(
             old_id.remove();
         }
 
-        let new_id = glib::timeout_add_local(std::time::Duration::from_millis(80), move || {
-            debounce_timeout_inner.borrow_mut().take();
+        let new_id = glib::timeout_add_local(
+            std::time::Duration::from_millis(crate::constants::SEARCH_DEBOUNCE_MS),
+            move || {
+                debounce_timeout_inner.borrow_mut().take();
 
-            {
-                let mut query = query_state_inner.borrow_mut();
-                query.clear();
-                query.push_str(&query_text);
-            }
+                {
+                    let mut query = query_state_inner.borrow_mut();
+                    query.clear();
+                    query.push_str(&query_text);
+                }
 
-            list_state_inner.refresh_filter();
-            list_state_inner.select_first();
-            on_search_changed_inner();
+                list_state_inner.refresh_filter();
+                list_state_inner.select_first();
+                on_search_changed_inner();
 
-            glib::ControlFlow::Break
-        });
+                glib::ControlFlow::Break
+            },
+        );
 
         debounce_timeout_id.borrow_mut().replace(new_id);
     });
