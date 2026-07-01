@@ -23,8 +23,10 @@ impl WindowState {
     pub fn load() -> Self {
         if let Some(config_path) = Self::get_config_path()
             && let Ok(contents) = fs::read_to_string(config_path)
-            && let Ok(state) = toml::from_str(&contents)
+            && let Ok(mut state) = toml::from_str::<WindowState>(&contents)
         {
+            state.width = state.width.max(320);
+            state.height = state.height.max(240);
             return state;
         }
 
@@ -45,5 +47,36 @@ impl WindowState {
 
     fn get_config_path() -> Option<PathBuf> {
         dirs::config_dir().map(|config_dir| config_dir.join("pantry").join("window-state.toml"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamps_dirty_config_to_minimum() {
+        let dirty = r#"width = 10
+height = 5
+maximized = false
+"#;
+        let mut state: WindowState = toml::from_str(dirty).unwrap();
+        state.width = state.width.max(320);
+        state.height = state.height.max(240);
+        assert_eq!(state.width, 320);
+        assert_eq!(state.height, 240);
+    }
+
+    #[test]
+    fn normal_values_pass_through() {
+        let ok = r#"width = 1200
+height = 800
+maximized = true
+"#;
+        let mut state: WindowState = toml::from_str(ok).unwrap();
+        state.width = state.width.max(320);
+        state.height = state.height.max(240);
+        assert_eq!(state.width, 1200);
+        assert_eq!(state.height, 800);
     }
 }
