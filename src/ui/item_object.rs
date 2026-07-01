@@ -5,6 +5,7 @@ use gtk4::glib;
 pub struct ItemData {
     item: std::cell::RefCell<Option<crate::domain::item::Item>>,
     search_text: std::cell::RefCell<String>,
+    marked: std::cell::Cell<bool>,
 }
 
 #[glib::object_subclass]
@@ -47,5 +48,13 @@ impl ItemObject {
 
     pub fn search_text(&self) -> String {
         self.imp().search_text.borrow().clone()
+    }
+
+    pub fn is_marked(&self) -> bool {
+        self.imp().marked.get()
+    }
+
+    pub fn set_marked(&self, marked: bool) {
+        self.imp().marked.set(marked);
     }
 }

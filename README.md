@@ -80,6 +80,7 @@ Options:
 - `-f, --config`: Configuration file path [default: `~/.config/pantry/config.toml`]
 - `-c, --category`: Specify the category to load (load only categories matching the global display mode if not specified)
 - `-d, --display`: Display mode: text or picture (overrides config file setting)
+- `-m, --multi`: Enable multi-selection mode (Tab to mark, Enter to confirm)
 
 ## Keyboard Shortcuts
 
@@ -92,6 +93,8 @@ Options:
 | `Escape` | Clear search, or close if empty |
 | `Ctrl+u` | Clear search input |
 | `Ctrl+c` / `Ctrl+g` | Quit |
+| `Tab` | Mark/unmark item (multi-select mode only, auto-advances down) |
+| `Shift+Tab` | Mark/unmark item (multi-select mode only, moves up) |
 
 ## Examples
 
@@ -99,6 +102,12 @@ Use with piped input:
 
 ```bash
 echo -e "Option 1\nOption 2\nOption 3" | pantry
+```
+
+Multi-select mode — mark multiple items with Tab, confirm with Enter (newline-separated output):
+
+```bash
+pantry -f bookmarks.toml -m | xargs -n 1 xdg-open
 ```
 
 Force picture mode (use with image paths):

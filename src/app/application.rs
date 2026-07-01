@@ -48,6 +48,9 @@ pub struct Args {
 
     #[arg(short = 'd', long = "display")]
     pub display: Option<String>,
+
+    #[arg(short = 'm', long = "multi", help = "Enable multi-selection mode")]
+    pub multi: bool,
 }
 
 pub struct PantryApp {
@@ -120,7 +123,12 @@ impl PantryApp {
             &preview_manager,
         );
 
-        event_handlers::setup_keyboard_controller(&window, &list_state, &search_entry);
+        event_handlers::setup_keyboard_controller(
+            &window,
+            &list_state,
+            &search_entry,
+            self.args.multi,
+        );
 
         if let Some(Ok(config)) = parsed_config {
             self.load_items_from_config(

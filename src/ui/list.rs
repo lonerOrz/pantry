@@ -167,11 +167,33 @@ fn build_factory(query_state: SearchState) -> SignalListItemFactory {
             return;
         };
 
+        let marked = item_object.is_marked();
+
         let query = query_state.borrow();
         if query.is_empty() {
-            title_label.set_markup(&glib::markup_escape_text(&item_object.title()));
+            let base = glib::markup_escape_text(&item_object.title());
+            if marked {
+                title_label.set_markup(&format!(
+                    "<span foreground='#3584e4' weight='bold'>✓ </span>{}",
+                    base
+                ));
+                row.add_css_class("marked-row");
+            } else {
+                title_label.set_markup(&base);
+                row.remove_css_class("marked-row");
+            }
         } else {
-            title_label.set_markup(&highlight_title(&item_object.title(), &query));
+            let highlighted = highlight_title(&item_object.title(), &query);
+            if marked {
+                title_label.set_markup(&format!(
+                    "<span foreground='#3584e4' weight='bold'>✓ </span>{}",
+                    highlighted
+                ));
+                row.add_css_class("marked-row");
+            } else {
+                title_label.set_markup(&highlighted);
+                row.remove_css_class("marked-row");
+            }
         }
         value_label.set_label(&item_object.value());
     });
