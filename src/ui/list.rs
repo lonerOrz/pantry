@@ -103,7 +103,7 @@ fn build_filter(query_state: SearchState) -> CustomFilter {
 
 fn build_sorter(query_state: SearchState) -> CustomSorter {
     CustomSorter::new(move |obj1, obj2| {
-        let query = query_state.borrow();
+        let query = query_state.borrow().clone();
         if query.is_empty() {
             return Ordering::Equal.into();
         }
