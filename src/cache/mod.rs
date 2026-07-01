@@ -74,7 +74,8 @@ impl CacheAdapter for CacheManager {
         let mut writer = BufWriter::new(file);
         writer.write_all(&width.to_ne_bytes())?;
         writer.write_all(&height.to_ne_bytes())?;
-        writer.write_all(raw_data)?;
+        let compressed = lz4_flex::block::compress_prepend_size(raw_data);
+        writer.write_all(&compressed)?;
         writer.flush()?;
 
         self.evict_if_needed();
@@ -109,11 +110,20 @@ impl CacheAdapter for CacheManager {
             return None;
         }
 
-        let mut raw_data = Vec::with_capacity(expected_size as usize);
-        if let Err(e) = file.read_to_end(&mut raw_data) {
+        let mut compressed = Vec::new();
+        if let Err(e) = file.read_to_end(&mut compressed) {
             eprintln!("Failed to read data from cache {}: {}", path.display(), e);
             return None;
         }
+
+        // Decompress; old uncompressed caches fail here → return None → silent re-cache
+        let raw_data = match lz4_flex::block::decompress_size_prepended(&compressed) {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("Failed to decompress cache {}: {}", path.display(), e);
+                return None;
+            }
+        };
 
         if raw_data.len() == expected_size as usize {
             Some((raw_data, width, height))
