@@ -28,7 +28,7 @@ fn get_default_config_path() -> String {
         .join("pantry");
 
     if let Err(e) = std::fs::create_dir_all(&config_dir) {
-        eprintln!("Warning: Failed to create config directory: {}", e);
+        log::warn!("Failed to create config directory: {}", e);
     }
 
     config_dir.join("config.toml").to_string_lossy().to_string()
@@ -107,7 +107,7 @@ impl PantryApp {
                     UiMode::Config { display_mode }
                 }
                 Err(e) => {
-                    eprintln!("{}", e);
+                    log::error!("{}", e);
                     UiMode::Config {
                         display_mode: DisplayMode::Text,
                     }
@@ -178,7 +178,7 @@ impl PantryApp {
             let processed_items = match load_result {
                 Ok(Ok(items)) => items,
                 Ok(Err(e)) => {
-                    eprintln!("{}", e);
+                    log::error!("{}", e);
                     return;
                 }
                 Err(e) => {
@@ -189,7 +189,7 @@ impl PantryApp {
                     } else {
                         "Unknown panic payload"
                     };
-                    eprintln!(
+                    log::error!(
                         "Failed to load config items (thread panicked): {}",
                         panic_msg
                     );

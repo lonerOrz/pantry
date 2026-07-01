@@ -28,7 +28,7 @@ impl CacheManager {
             .join("pantry");
 
         if let Err(e) = fs::create_dir_all(&cache_dir) {
-            eprintln!("Warning: Failed to create cache directory: {}", e);
+            log::warn!("Failed to create cache directory: {}", e);
             cache_dir = PathBuf::from(".");
         }
 
@@ -87,18 +87,18 @@ impl CacheAdapter for CacheManager {
         let mut file = match fs::File::open(path) {
             Ok(f) => f,
             Err(e) => {
-                eprintln!("Failed to open cache file {}: {}", path.display(), e);
+                log::debug!("Failed to open cache file {}: {}", path.display(), e);
                 return None;
             }
         };
         let mut width_buf = [0u8; 4];
         let mut height_buf = [0u8; 4];
         if let Err(e) = file.read_exact(&mut width_buf) {
-            eprintln!("Failed to read width from cache {}: {}", path.display(), e);
+            log::debug!("Failed to read width from cache {}: {}", path.display(), e);
             return None;
         }
         if let Err(e) = file.read_exact(&mut height_buf) {
-            eprintln!("Failed to read height from cache {}: {}", path.display(), e);
+            log::debug!("Failed to read height from cache {}: {}", path.display(), e);
             return None;
         }
 
@@ -112,7 +112,7 @@ impl CacheAdapter for CacheManager {
 
         let mut compressed = Vec::new();
         if let Err(e) = file.read_to_end(&mut compressed) {
-            eprintln!("Failed to read data from cache {}: {}", path.display(), e);
+            log::debug!("Failed to read data from cache {}: {}", path.display(), e);
             return None;
         }
 
@@ -120,7 +120,7 @@ impl CacheAdapter for CacheManager {
         let raw_data = match lz4_flex::block::decompress_size_prepended(&compressed) {
             Ok(data) => data,
             Err(e) => {
-                eprintln!("Failed to decompress cache {}: {}", path.display(), e);
+                log::debug!("Failed to decompress cache {}: {}", path.display(), e);
                 return None;
             }
         };

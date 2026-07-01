@@ -17,6 +17,8 @@ tempfile = "3.13"
 image = { version = "0.25", default-features = false, features = ["gif"] }
 libc = "0.2"
 lz4_flex = "0.11"
+log = "0.4"
+env_logger = "0.11"
 
 [dev-dependencies]
 filetime = "0.2"
