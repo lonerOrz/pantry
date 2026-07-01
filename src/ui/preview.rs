@@ -74,7 +74,7 @@ impl PreviewArea {
     }
 
     pub fn render(&self, payload: PreviewPayload, item: &Item) {
-        if item.is_picture_mode() {
+        if matches!(item.display, crate::domain::DisplayMode::Picture) {
             self.details_scrolled.set_visible(true);
             self.title_label
                 .set_markup(&format!("<b>{}</b>", glib::markup_escape_text(&item.title)));

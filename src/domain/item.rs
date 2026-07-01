@@ -11,11 +11,6 @@ pub struct Item {
 }
 
 impl Item {
-    /// Check if this item is in picture mode
-    pub fn is_picture_mode(&self) -> bool {
-        matches!(self.display, DisplayMode::Picture)
-    }
-
     /// Get the display text content
     pub fn display_text(&self) -> String {
         self.value.clone()
