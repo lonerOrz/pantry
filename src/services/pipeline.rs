@@ -2,167 +2,151 @@ use crate::config::{Category, Config};
 use crate::constants::MAX_ITEMS;
 use crate::domain::item::Item;
 use crate::domain::{DisplayMode, SourceMode};
+use crate::services::expansion;
 use crate::services::process::CommandExecutor;
 
-pub struct ItemPipeline;
+/// Execute the full pipeline: resolve raw items and expand them for display
+pub fn run(
+    config: &Config,
+    category_filter: &Option<String>,
+    display_arg: &Option<String>,
+) -> Vec<Item> {
+    let executor = crate::services::process::ShellExec;
+    let raw_items = resolve(config, category_filter, display_arg, &executor);
+    expand_for_display(raw_items)
+}
 
-impl ItemPipeline {
-    /// Execute the full pipeline: resolve raw items and expand them for display
-    pub fn run(
-        config: &Config,
-        category_filter: &Option<String>,
-        display_arg: &Option<String>,
-    ) -> Vec<Item> {
-        let executor = crate::services::process::ShellExec;
-        let raw_items = Self::resolve(config, category_filter, display_arg, &executor);
-        Self::expand_for_display(raw_items)
-    }
+/// Resolve configuration into raw items
+pub(crate) fn resolve(
+    config: &Config,
+    category_filter: &Option<String>,
+    display_arg: &Option<String>,
+    executor: &dyn CommandExecutor,
+) -> Vec<Item> {
+    let mut items = Vec::new();
 
-    /// Resolve configuration into raw items
-    pub(crate) fn resolve(
-        config: &Config,
-        category_filter: &Option<String>,
-        display_arg: &Option<String>,
-        executor: &dyn CommandExecutor,
-    ) -> Vec<Item> {
-        let mut items = Vec::new();
-
-        for (name, category) in &config.categories {
-            if !Self::matches_category(
-                name,
-                category_filter,
-                category,
-                &config.display,
-                display_arg,
-            ) {
-                continue;
-            }
-
-            let effective_display = crate::config::resolve_display_mode(
-                display_arg,
-                &category.display,
-                &config.display,
-            );
-            let effective_source = category.source.clone().unwrap_or(config.source.clone());
-
-            Self::load_category_items(
-                name,
-                category,
-                effective_display,
-                effective_source,
-                &mut items,
-                executor,
-            );
+    for (name, category) in &config.categories {
+        if !matches_category(name, category_filter, category, &config.display, display_arg) {
+            continue;
         }
 
-        if items.len() > MAX_ITEMS {
-            items.truncate(MAX_ITEMS);
-        }
+        let effective_display =
+            crate::config::resolve_display_mode(display_arg, &category.display, &config.display);
+        let effective_source = category.source.clone().unwrap_or(config.source.clone());
 
-        items
+        load_category_items(
+            name,
+            category,
+            effective_display,
+            effective_source,
+            &mut items,
+            executor,
+        );
     }
 
-    /// Process items for display (e.g., expand directories in picture mode)
-    pub(crate) fn expand_for_display(items: Vec<Item>) -> Vec<Item> {
-        items
-            .iter()
-            .flat_map(crate::services::expansion::ItemProcessor::process_for_display)
-            .collect()
+    if items.len() > MAX_ITEMS {
+        items.truncate(MAX_ITEMS);
     }
 
-    fn matches_category(
-        name: &str,
-        filter: &Option<String>,
-        category: &Category,
-        global_display: &DisplayMode,
-        display_arg: &Option<String>,
-    ) -> bool {
-        if let Some(f) = filter {
-            return name == f;
-        }
-        display_arg.is_some()
-            || category.display.as_ref().unwrap_or(global_display) == global_display
-    }
+    items
+}
 
-    fn load_category_items(
-        category_name: &str,
-        category_config: &Category,
-        effective_display: DisplayMode,
-        effective_source: SourceMode,
-        items: &mut Vec<Item>,
-        executor: &dyn CommandExecutor,
-    ) {
-        match effective_source {
-            SourceMode::Config => {
-                for (key, value) in &category_config.entries {
-                    if items.len() >= MAX_ITEMS {
-                        return;
-                    }
-                    items.push(Item {
-                        title: key.clone(),
-                        value: value.clone(),
-                        category: category_name.to_string(),
-                        display: effective_display.clone(),
-                        source: effective_source.clone(),
-                        preview_template: None,
-                    });
+/// Process items for display (e.g., expand directories in picture mode)
+pub(crate) fn expand_for_display(items: Vec<Item>) -> Vec<Item> {
+    items
+        .iter()
+        .flat_map(expansion::process_for_display)
+        .collect()
+}
+
+fn matches_category(
+    name: &str,
+    filter: &Option<String>,
+    category: &Category,
+    global_display: &DisplayMode,
+    display_arg: &Option<String>,
+) -> bool {
+    if let Some(f) = filter {
+        return name == f;
+    }
+    display_arg.is_some()
+        || category.display.as_ref().unwrap_or(global_display) == global_display
+}
+
+fn load_category_items(
+    category_name: &str,
+    category_config: &Category,
+    effective_display: DisplayMode,
+    effective_source: SourceMode,
+    items: &mut Vec<Item>,
+    executor: &dyn CommandExecutor,
+) {
+    match effective_source {
+        SourceMode::Config => {
+            for (key, value) in &category_config.entries {
+                if items.len() >= MAX_ITEMS {
+                    return;
                 }
+                items.push(Item {
+                    title: key.clone(),
+                    value: value.clone(),
+                    category: category_name.to_string(),
+                    display: effective_display.clone(),
+                    source: effective_source.clone(),
+                    preview_template: None,
+                });
             }
-            SourceMode::Command => {
-                for (key, cmd) in &category_config.entries {
-                    if let Ok(output) = Self::execute_command(cmd, executor) {
-                        let lines: Vec<&str> = output.lines().collect();
-                        for (idx, line) in lines.iter().enumerate() {
-                            if !line.trim().is_empty() {
-                                if items.len() >= MAX_ITEMS {
-                                    return;
-                                }
-                                let title = if lines.len() == 1 {
-                                    key.clone()
-                                } else {
-                                    format!("{} [{}]", key, idx + 1)
-                                };
-
-                                items.push(Item {
-                                    title,
-                                    value: line.trim().to_string(),
-                                    category: category_name.to_string(),
-                                    display: effective_display.clone(),
-                                    source: effective_source.clone(),
-                                    preview_template: None,
-                                });
+        }
+        SourceMode::Command => {
+            for (key, cmd) in &category_config.entries {
+                if let Ok(output) = execute_command(cmd, executor) {
+                    let lines: Vec<&str> = output.lines().collect();
+                    for (idx, line) in lines.iter().enumerate() {
+                        if !line.trim().is_empty() {
+                            if items.len() >= MAX_ITEMS {
+                                return;
                             }
+                            let title = if lines.len() == 1 {
+                                key.clone()
+                            } else {
+                                format!("{} [{}]", key, idx + 1)
+                            };
+
+                            items.push(Item {
+                                title,
+                                value: line.trim().to_string(),
+                                category: category_name.to_string(),
+                                display: effective_display.clone(),
+                                source: effective_source.clone(),
+                                preview_template: None,
+                            });
                         }
                     }
                 }
             }
-            SourceMode::Dynamic => {
-                for (list_cmd, preview_template) in &category_config.entries {
-                    if let Ok(dynamic_items) =
-                        crate::services::expansion::ItemProcessor::process_dynamic_source(
-                            list_cmd,
-                            preview_template,
-                            executor,
-                        )
-                    {
-                        items.extend(dynamic_items);
-                    }
+        }
+        SourceMode::Dynamic => {
+            for (list_cmd, preview_template) in &category_config.entries {
+                if let Ok(dynamic_items) =
+                    expansion::process_dynamic_source(list_cmd, preview_template, executor)
+                {
+                    items.extend(dynamic_items);
                 }
             }
         }
     }
+}
 
-    fn execute_command(
-        command: &str,
-        executor: &dyn CommandExecutor,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let output = executor.execute("sh", &["-c", command])?;
-        if output.success {
-            Ok(String::from_utf8(output.stdout)?)
-        } else {
-            let error_msg = String::from_utf8_lossy(&output.stdout);
-            Err(format!("Command failed: {}", error_msg).into())
-        }
+fn execute_command(
+    command: &str,
+    executor: &dyn CommandExecutor,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let output = executor.execute("sh", &["-c", command])?;
+    if output.success {
+        Ok(String::from_utf8(output.stdout)?)
+    } else {
+        let error_msg = String::from_utf8_lossy(&output.stdout);
+        Err(format!("Command failed: {}", error_msg).into())
     }
 }
 
@@ -190,7 +174,7 @@ mod tests {
         cat.source = Some(SourceMode::Config);
         let mut items = Vec::new();
         let exec = MockExec::new();
-        ItemPipeline::load_category_items(
+        load_category_items(
             "test",
             &cat,
             DisplayMode::Text,
@@ -214,7 +198,7 @@ mod tests {
         cat.source = Some(SourceMode::Command);
         let mut items = Vec::new();
         let exec = MockExec::new().push_ok(true, b"line1\nline2\n".to_vec());
-        ItemPipeline::load_category_items(
+        load_category_items(
             "test",
             &cat,
             DisplayMode::Text,
@@ -235,7 +219,7 @@ mod tests {
         cat.source = Some(SourceMode::Command);
         let mut items = Vec::new();
         let exec = MockExec::new().push_ok(true, b"only\n".to_vec());
-        ItemPipeline::load_category_items(
+        load_category_items(
             "test",
             &cat,
             DisplayMode::Text,
@@ -253,7 +237,7 @@ mod tests {
         cat.source = Some(SourceMode::Command);
         let mut items = Vec::new();
         let exec = MockExec::new().push_ok(false, Vec::new());
-        ItemPipeline::load_category_items(
+        load_category_items(
             "test",
             &cat,
             DisplayMode::Text,
@@ -270,7 +254,7 @@ mod tests {
         cat.source = Some(SourceMode::Dynamic);
         let mut items = Vec::new();
         let exec = MockExec::new().push_ok(true, b"id\tName\n".to_vec());
-        ItemPipeline::load_category_items(
+        load_category_items(
             "test",
             &cat,
             DisplayMode::Text,
@@ -297,7 +281,7 @@ mod tests {
         };
         let mut items = Vec::new();
         let exec = MockExec::new();
-        ItemPipeline::load_category_items(
+        load_category_items(
             "test",
             &cat,
             DisplayMode::Text,

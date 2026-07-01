@@ -4,9 +4,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::app::{
-    event_handlers::EventHandler,
+    event_handlers,
     preview_manager::PreviewManager,
-    ui_builder::{UiBuilder, UiMode},
+    ui_builder::{self, UiMode},
 };
 use crate::services::preview::create_prod_preview_service;
 use crate::ui::list::ListState;
@@ -83,7 +83,7 @@ impl PantryApp {
             }
         };
 
-        let (window, list_state, preview_area_rc_opt, search_entry) = UiBuilder::build_ui(
+        let (window, list_state, preview_area_rc_opt, search_entry) = ui_builder::build_ui(
             &self.window_state,
             app,
             search_query.clone(),
@@ -91,7 +91,7 @@ impl PantryApp {
             &preview_manager,
         );
 
-        EventHandler::setup_keyboard_controller(
+        event_handlers::setup_keyboard_controller(
             &window,
             &list_state,
             &search_entry,
@@ -142,7 +142,7 @@ impl PantryApp {
         glib::spawn_future_local(async move {
             let load_result = gio::spawn_blocking(move || {
                 let config = crate::services::loader::parse_config(&config_path)?;
-                let processed_items = crate::services::pipeline::ItemPipeline::run(
+                let processed_items = crate::services::pipeline::run(
                     &config,
                     &category_filter,
                     &display_arg,

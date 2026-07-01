@@ -20,60 +20,56 @@ pub enum UiMode {
     Config { display_mode: DisplayMode },
 }
 
-pub struct UiBuilder;
+pub fn build_ui<
+    C: CacheAdapter + Clone + 'static,
+    E: CommandExecutor + Clone + 'static,
+    D: ImageDecoder + Clone + 'static,
+>(
+    window_state: &WindowState,
+    app: &Application,
+    query_state: crate::ui::search::SearchState,
+    mode: UiMode,
+    preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
+) -> (
+    ApplicationWindow,
+    ListState,
+    Option<Rc<RefCell<preview::PreviewArea>>>,
+    SearchEntry,
+) {
+    let display_mode = match &mode {
+        UiMode::Stdin => DisplayMode::Text,
+        UiMode::Config { display_mode } => display_mode.clone(),
+    };
 
-impl UiBuilder {
-    pub fn build_ui<
-        C: CacheAdapter + Clone + 'static,
-        E: CommandExecutor + Clone + 'static,
-        D: ImageDecoder + Clone + 'static,
-    >(
-        window_state: &WindowState,
-        app: &Application,
-        query_state: crate::ui::search::SearchState,
-        mode: UiMode,
-        preview_manager: &Rc<RefCell<PreviewManager<C, E, D>>>,
-    ) -> (
-        ApplicationWindow,
-        ListState,
-        Option<Rc<RefCell<preview::PreviewArea>>>,
-        SearchEntry,
-    ) {
-        let display_mode = match &mode {
-            UiMode::Stdin => DisplayMode::Text,
-            UiMode::Config { display_mode } => display_mode.clone(),
-        };
+    let (window, list_state, preview_area_rc_opt, search_entry, main_widget) = build_ui_shell(
+        window_state,
+        app,
+        &query_state,
+        &display_mode,
+        preview_manager,
+    );
 
-        let (window, list_state, preview_area_rc_opt, search_entry, main_widget) = build_ui_shell(
-            window_state,
-            app,
-            &query_state,
-            &display_mode,
-            preview_manager,
-        );
-
-        if matches!(mode, UiMode::Config { .. }) && window_state.maximized {
-            window.maximize();
-        }
-
-        match mode {
-            UiMode::Stdin => spawn_stdin_reader(&list_state, &display_mode),
-            UiMode::Config { .. } => {}
-        }
-
-        list_state.view.grab_focus();
-
-        setup_preview_updates(
-            &window,
-            &main_widget,
-            &list_state,
-            &preview_area_rc_opt,
-            display_mode,
-            preview_manager,
-        );
-
-        (window, list_state, preview_area_rc_opt, search_entry)
+    if matches!(mode, UiMode::Config { .. }) && window_state.maximized {
+        window.maximize();
     }
+
+    match mode {
+        UiMode::Stdin => spawn_stdin_reader(&list_state, &display_mode),
+        UiMode::Config { .. } => {}
+    }
+
+    list_state.view.grab_focus();
+
+    setup_preview_updates(
+        &window,
+        &main_widget,
+        &list_state,
+        &preview_area_rc_opt,
+        display_mode,
+        preview_manager,
+    );
+
+    (window, list_state, preview_area_rc_opt, search_entry)
 }
 
 fn build_ui_shell<

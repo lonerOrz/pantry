@@ -1,54 +1,45 @@
 use crate::ui::list::ListState;
 use gtk4::{ApplicationWindow, EventControllerKey, PropagationPhase, prelude::*};
 
-pub struct EventHandler;
+pub fn setup_keyboard_controller(
+    window: &ApplicationWindow,
+    list_state: &ListState,
+    search_entry: &gtk4::SearchEntry,
+    _preview_area_rc_opt: Option<
+        std::rc::Rc<std::cell::RefCell<crate::ui::preview::PreviewArea>>,
+    >,
+) {
+    let controller = EventControllerKey::new();
+    controller.set_propagation_phase(PropagationPhase::Capture);
 
-impl EventHandler {
-    pub fn setup_keyboard_controller(
-        window: &ApplicationWindow,
-        list_state: &ListState,
-        search_entry: &gtk4::SearchEntry,
-        _preview_area_rc_opt: Option<
-            std::rc::Rc<std::cell::RefCell<crate::ui::preview::PreviewArea>>,
-        >,
-    ) {
-        let controller = EventControllerKey::new();
-        controller.set_propagation_phase(PropagationPhase::Capture);
+    let list_state = list_state.clone();
+    let search_entry = search_entry.clone();
 
-        let list_state = list_state.clone();
-        let search_entry = search_entry.clone();
+    controller.connect_key_pressed(move |controller, keyval, _, _| {
+        if keyval == gtk4::gdk::Key::Return || keyval == gtk4::gdk::Key::KP_Enter {
+            handle_selection(&list_state);
+            return glib::Propagation::Stop;
+        }
 
-        controller.connect_key_pressed(move |controller, keyval, _, _| {
-            // Confirm and execute the selected item
-            if keyval == gtk4::gdk::Key::Return || keyval == gtk4::gdk::Key::KP_Enter {
-                handle_selection(&list_state);
-                return glib::Propagation::Stop;
+        if keyval == gtk4::gdk::Key::Escape {
+            if !search_entry.text().is_empty() {
+                search_entry.set_text("");
+            } else if let Some(win) = list_state.view.root().and_downcast::<ApplicationWindow>()
+            {
+                win.close();
             }
 
-            // Escape clearing search box or closing window
-            if keyval == gtk4::gdk::Key::Escape {
-                if !search_entry.text().is_empty() {
-                    search_entry.set_text("");
-                } else if let Some(win) = list_state.view.root().and_downcast::<ApplicationWindow>()
-                {
-                    win.close();
-                }
+            return glib::Propagation::Stop;
+        }
 
-                return glib::Propagation::Stop;
-            }
+        if keyval == gtk4::gdk::Key::Up || keyval == gtk4::gdk::Key::Down {
+            controller.forward(&list_state.view);
+            return glib::Propagation::Stop;
+        }
 
-            // Forward Up/Down arrows natively to ListView using EventControllerKey's forward.
-            // This maintains perfect list scrolling alignment while keeping keyboard focus
-            // securely tied to whichever input element is currently active.
-            if keyval == gtk4::gdk::Key::Up || keyval == gtk4::gdk::Key::Down {
-                controller.forward(&list_state.view);
-                return glib::Propagation::Stop;
-            }
-
-            glib::Propagation::Proceed
-        });
-        window.add_controller(controller);
-    }
+        glib::Propagation::Proceed
+    });
+    window.add_controller(controller);
 }
 
 pub fn handle_selection(list_state: &ListState) {
