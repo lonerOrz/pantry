@@ -1,6 +1,6 @@
 use crate::domain::item::Item;
-use crate::domain::r#match::{fuzzy_match, relevance_score};
 use crate::ui::item_object::ItemObject;
+use crate::ui::r#match::{fuzzy_match, relevance_score};
 use gtk4::prelude::*;
 use gtk4::{
     ApplicationWindow, Box as GtkBox, CustomFilter, CustomSorter, FilterChange, FilterListModel,
