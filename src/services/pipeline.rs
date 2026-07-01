@@ -26,7 +26,13 @@ pub(crate) fn resolve(
     let mut items = Vec::new();
 
     for (name, category) in &config.categories {
-        if !matches_category(name, category_filter, category, &config.display, display_arg) {
+        if !matches_category(
+            name,
+            category_filter,
+            category,
+            &config.display,
+            display_arg,
+        ) {
             continue;
         }
 
@@ -69,8 +75,7 @@ fn matches_category(
     if let Some(f) = filter {
         return name == f;
     }
-    display_arg.is_some()
-        || category.display.as_ref().unwrap_or(global_display) == global_display
+    display_arg.is_some() || category.display.as_ref().unwrap_or(global_display) == global_display
 }
 
 fn load_category_items(

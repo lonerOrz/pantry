@@ -106,11 +106,7 @@ impl PantryApp {
             &preview_manager,
         );
 
-        event_handlers::setup_keyboard_controller(
-            &window,
-            &list_state,
-            &search_entry,
-        );
+        event_handlers::setup_keyboard_controller(&window, &list_state, &search_entry);
 
         if let Some(Ok(config)) = parsed_config {
             self.load_items_from_config(
@@ -154,11 +150,8 @@ impl PantryApp {
 
         glib::spawn_future_local(async move {
             let load_result = gio::spawn_blocking(move || {
-                let processed_items = crate::services::pipeline::run(
-                    &config,
-                    &category_filter,
-                    &display_arg,
-                );
+                let processed_items =
+                    crate::services::pipeline::run(&config, &category_filter, &display_arg);
                 Ok::<Vec<crate::domain::item::Item>, String>(processed_items)
             })
             .await;

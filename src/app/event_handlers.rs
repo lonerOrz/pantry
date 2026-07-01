@@ -21,8 +21,7 @@ pub fn setup_keyboard_controller(
         if keyval == gtk4::gdk::Key::Escape {
             if !search_entry.text().is_empty() {
                 search_entry.set_text("");
-            } else if let Some(win) = list_state.view.root().and_downcast::<ApplicationWindow>()
-            {
+            } else if let Some(win) = list_state.view.root().and_downcast::<ApplicationWindow>() {
                 win.close();
             }
 

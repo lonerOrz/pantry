@@ -72,10 +72,14 @@ impl<'de> Deserialize<'de> for Config {
                     .map(parse_source_mode);
 
                 let entries: HashMap<String, String> = cat_table
-                    .iter()
-                    .filter(|(k, _)| *k != "display" && *k != "source")
-                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                    .collect();
+                    .get("entries")
+                    .and_then(|v| v.as_table())
+                    .map(|t| {
+                        t.iter()
+                            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                            .collect()
+                    })
+                    .unwrap_or_default();
 
                 categories.insert(
                     name.clone(),
@@ -93,5 +97,65 @@ impl<'de> Deserialize<'de> for Config {
             source,
             categories,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_picture_config_with_entries_subtable() {
+        let toml_str = r#"
+display = "picture"
+
+[favorites]
+display = "picture"
+
+[favorites.entries]
+"cat" = "~/Pictures/wallpapers/cat.png"
+
+[logos]
+display = "picture"
+
+[logos.entries]
+"logos" = "~/Pictures/logos/"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.display, DisplayMode::Picture);
+        assert_eq!(config.categories.len(), 2);
+
+        let fav = config.categories.get("favorites").unwrap();
+        assert_eq!(fav.display, Some(DisplayMode::Picture));
+        assert_eq!(fav.entries.len(), 1);
+        assert_eq!(
+            fav.entries.get("cat").unwrap(),
+            "~/Pictures/wallpapers/cat.png"
+        );
+
+        let logos = config.categories.get("logos").unwrap();
+        assert_eq!(logos.entries.get("logos").unwrap(), "~/Pictures/logos/");
+    }
+
+    #[test]
+    fn parse_text_config_with_command_source() {
+        let toml_str = r#"
+display = "text"
+
+[shell]
+display = "text"
+source = "command"
+
+[shell.entries]
+"history" = "cat ~/.bash_history | tail -20"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.display, DisplayMode::Text);
+        let shell = config.categories.get("shell").unwrap();
+        assert_eq!(shell.source, Some(SourceMode::Command));
+        assert_eq!(
+            shell.entries.get("history").unwrap(),
+            "cat ~/.bash_history | tail -20"
+        );
     }
 }

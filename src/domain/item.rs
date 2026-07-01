@@ -9,4 +9,3 @@ pub struct Item {
     pub source: SourceMode,
     pub preview_template: Option<String>,
 }
-
