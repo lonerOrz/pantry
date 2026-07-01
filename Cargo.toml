@@ -8,7 +8,6 @@ gtk4 = "0.10"
 gdk-pixbuf = "0.21.5"
 walkdir = "2.5.0"
 glib = "0.21.5"
-rayon = "1.11.0"
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 dirs = "5.0"
