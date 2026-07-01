@@ -30,6 +30,20 @@ Pantry supports several command line options:
 - `-c, --category`: Specify the category to load (load only categories matching the global display mode if not specified)
 - `-d, --display`: Display mode: text or picture (overrides config file setting)
 
+## Keyboard Shortcuts
+
+Pantry supports multiple keyboard navigation styles so you can keep your hands on the home row:
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate list |
+| `Ctrl+p` / `Ctrl+n` | Navigate list (Emacs style) |
+| `Ctrl+k` / `Ctrl+j` | Navigate list (Vim style) |
+| `Enter` | Confirm selection and output value |
+| `Escape` | Clear search text, or close window if search is empty |
+| `Ctrl+u` | Clear search input instantly |
+| `Ctrl+c` / `Ctrl+g` | Quit immediately |
+
 ## Configuration
 
 Pantry uses TOML format configuration files with separate display and input modes. The configuration contains global defaults and entries for various categories. Each category can optionally specify its own modes, which will override the global defaults.

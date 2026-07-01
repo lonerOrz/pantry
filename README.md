@@ -81,6 +81,18 @@ Options:
 - `-c, --category`: Specify the category to load (load only categories matching the global display mode if not specified)
 - `-d, --display`: Display mode: text or picture (overrides config file setting)
 
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate list |
+| `Ctrl+p` / `Ctrl+n` | Navigate list (Emacs) |
+| `Ctrl+k` / `Ctrl+j` | Navigate list (Vim) |
+| `Enter` | Confirm selection |
+| `Escape` | Clear search, or close if empty |
+| `Ctrl+u` | Clear search input |
+| `Ctrl+c` / `Ctrl+g` | Quit |
+
 ## Examples
 
 Use with piped input:
