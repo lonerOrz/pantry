@@ -1,13 +1,14 @@
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
-use std::str::FromStr;
 
 use crate::domain::{DisplayMode, SourceMode};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Category {
     pub display: Option<DisplayMode>,
     pub source: Option<SourceMode>,
+    #[serde(default)]
     pub entries: HashMap<String, String>,
 }
 
@@ -18,64 +19,29 @@ pub struct Config {
     pub categories: HashMap<String, Category>,
 }
 
+#[derive(Deserialize)]
+struct RawConfig {
+    pub display: Option<DisplayMode>,
+    pub source: Option<SourceMode>,
+    #[serde(flatten)]
+    pub categories: HashMap<String, toml::Value>,
+}
+
 impl<'de> Deserialize<'de> for Config {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let raw: toml::Value = Deserialize::deserialize(deserializer)?;
+        let raw = RawConfig::deserialize(deserializer)?;
 
-        let table = raw
-            .as_table()
-            .ok_or_else(|| serde::de::Error::custom("expected a TOML table"))?;
-
-        let display = table
-            .get("display")
-            .and_then(|v| v.as_str())
-            .and_then(|s| DisplayMode::from_str(s).ok())
-            .unwrap_or_default();
-
-        let source = table
-            .get("source")
-            .and_then(|v| v.as_str())
-            .and_then(|s| SourceMode::from_str(s).ok())
-            .unwrap_or_default();
+        let display = raw.display.unwrap_or_default();
+        let source = raw.source.unwrap_or_default();
 
         let mut categories = HashMap::new();
-        for (name, value) in table {
-            if name == "display" || name == "source" {
-                continue;
-            }
-            if let Some(cat_table) = value.as_table() {
-                let cat_display = cat_table
-                    .get("display")
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| DisplayMode::from_str(s).ok());
-
-                let cat_source = cat_table
-                    .get("source")
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| SourceMode::from_str(s).ok());
-
-                let entries: HashMap<String, String> = cat_table
-                    .get("entries")
-                    .and_then(|v| v.as_table())
-                    .map(|t| {
-                        t.iter()
-                            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-
-                categories.insert(
-                    name.clone(),
-                    Category {
-                        display: cat_display,
-                        source: cat_source,
-                        entries,
-                    },
-                );
-            }
+        for (name, val) in raw.categories {
+            let category = Category::deserialize(val)
+                .map_err(|e| serde::de::Error::custom(format!("In category [{}]: {}", name, e)))?;
+            categories.insert(name, category);
         }
 
         Ok(Config {
@@ -143,5 +109,32 @@ source = "command"
             shell.entries.get("history").unwrap(),
             "cat ~/.bash_history | tail -20"
         );
+    }
+
+    #[test]
+    fn deny_unknown_fields_reports_typo() {
+        let toml_str = r#"
+display = "picture"
+
+[favorites]
+displey = "picture"
+"#;
+        let err = toml::from_str::<Config>(toml_str).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("favorites"), "should mention category: {msg}");
+        assert!(msg.contains("displey"), "should mention typo: {msg}");
+    }
+
+    #[test]
+    fn deny_unknown_source_value() {
+        let toml_str = r#"
+display = "text"
+
+[shell]
+source = "dynamik"
+"#;
+        let err = toml::from_str::<Config>(toml_str).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("shell"), "should mention category: {msg}");
     }
 }
