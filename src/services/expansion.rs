@@ -1,6 +1,6 @@
 use crate::constants::{DYNAMIC_OUTPUT_MAX_BYTES, MAX_ITEMS};
+use crate::domain::DisplayMode;
 use crate::domain::item::Item;
-use crate::domain::{DisplayMode, SourceMode};
 use crate::services::process::CommandExecutor;
 
 const MEDIA_EXTENSIONS: &[&str] = &[
@@ -96,14 +96,11 @@ pub fn process_dynamic_source(
         let sanitized_id = id.replace('\0', "");
         let sanitized_display_text = display_text.replace('\0', "");
 
-        items.push(Item {
-            title: sanitized_display_text,
-            value: sanitized_id,
-            category: "dynamic".to_string(),
-            display: DisplayMode::Text,
-            source: SourceMode::Dynamic,
-            preview_template: template.clone(),
-        });
+        items.push(Item::dynamic(
+            sanitized_display_text,
+            sanitized_id,
+            template.clone(),
+        ));
 
         if items.len() >= MAX_ITEMS {
             break;
@@ -116,6 +113,7 @@ pub fn process_dynamic_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::SourceMode;
     use crate::services::process::MockExec;
 
     #[test]

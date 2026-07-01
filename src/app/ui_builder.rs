@@ -6,8 +6,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::constants::MAX_ITEMS;
+use crate::domain::DisplayMode;
 use crate::domain::item::Item;
-use crate::domain::{DisplayMode, SourceMode};
 use crate::ui::{header, list::ListState, preview, window};
 use crate::window_state::WindowState;
 
@@ -134,14 +134,7 @@ fn spawn_stdin_reader(list_state: &ListState, display_mode: &DisplayMode) {
 
     glib::idle_add_local(move || {
         while let Ok(line) = rx.try_recv() {
-            list_state_clone.append_item(Item {
-                title: line.to_string(),
-                value: line.to_string(),
-                category: "stdin".to_string(),
-                display: display_mode_clone.clone(),
-                source: SourceMode::Config,
-                preview_template: None,
-            });
+            list_state_clone.append_item(Item::stdin(line, display_mode_clone.clone()));
 
             stdin_count += 1;
             if stdin_count >= MAX_ITEMS {

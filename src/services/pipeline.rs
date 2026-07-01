@@ -92,14 +92,12 @@ fn load_category_items(
                 if items.len() >= MAX_ITEMS {
                     return;
                 }
-                items.push(Item {
-                    title: key.clone(),
-                    value: value.clone(),
-                    category: category_name.to_string(),
-                    display: effective_display.clone(),
-                    source: effective_source.clone(),
-                    preview_template: None,
-                });
+                items.push(Item::config(
+                    key.clone(),
+                    value.clone(),
+                    category_name,
+                    effective_display.clone(),
+                ));
             }
         }
         SourceMode::Command => {
@@ -117,14 +115,12 @@ fn load_category_items(
                                 format!("{} [{}]", key, idx + 1)
                             };
 
-                            items.push(Item {
+                            items.push(Item::command(
                                 title,
-                                value: line.trim().to_string(),
-                                category: category_name.to_string(),
-                                display: effective_display.clone(),
-                                source: effective_source.clone(),
-                                preview_template: None,
-                            });
+                                line.trim().to_string(),
+                                category_name,
+                                effective_display.clone(),
+                            ));
                         }
                     }
                 }

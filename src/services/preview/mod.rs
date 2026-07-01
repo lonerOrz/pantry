@@ -188,7 +188,7 @@ impl<C: CacheAdapter + Clone, E: CommandExecutor + Clone, D: ImageDecoder + Clon
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{DisplayMode, SourceMode};
+    use crate::domain::DisplayMode;
     use crate::services::process::MockExec;
     use std::collections::HashMap;
     use std::io;
@@ -292,47 +292,19 @@ mod tests {
     }
 
     fn text_item(value: &str) -> Item {
-        Item {
-            title: "test".into(),
-            value: value.into(),
-            category: "cat".into(),
-            display: DisplayMode::Text,
-            source: SourceMode::Config,
-            preview_template: None,
-        }
+        Item::config("test", value, "cat", DisplayMode::Text)
     }
 
     fn dynamic_item(value: &str) -> Item {
-        Item {
-            title: "test".into(),
-            value: value.into(),
-            category: "cat".into(),
-            display: DisplayMode::Text,
-            source: SourceMode::Dynamic,
-            preview_template: None,
-        }
+        Item::dynamic("test", value, None)
     }
 
     fn dynamic_item_with_template(value: &str, template: &str) -> Item {
-        Item {
-            title: "test".into(),
-            value: value.into(),
-            category: "cat".into(),
-            display: DisplayMode::Text,
-            source: SourceMode::Dynamic,
-            preview_template: Some(template.into()),
-        }
+        Item::dynamic("test", value, Some(template.into()))
     }
 
     fn picture_item(path: &str) -> Item {
-        Item {
-            title: "test".into(),
-            value: path.into(),
-            category: "cat".into(),
-            display: DisplayMode::Picture,
-            source: SourceMode::Config,
-            preview_template: None,
-        }
+        Item::config("test", path, "cat", DisplayMode::Picture)
     }
 
     #[test]
