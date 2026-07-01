@@ -32,31 +32,22 @@ pub fn process_for_display(item: &Item) -> Vec<Item> {
                         .unwrap_or(false)
                 {
                     let path_str = path.to_string_lossy();
-                    paths.push(Item {
-                        title: format!(
-                            "{} ({})",
-                            path.file_name().unwrap_or_default().to_string_lossy(),
-                            item.title
-                        ),
-                        value: path_str.to_string(),
-                        category: item.category.clone(),
-                        display: item.display.clone(),
-                        source: item.source.clone(),
-                        preview_template: item.preview_template.clone(),
-                    });
+                    let mut child = item.clone();
+                    child.title = format!(
+                        "{} ({})",
+                        path.file_name().unwrap_or_default().to_string_lossy(),
+                        item.title
+                    );
+                    child.value = path_str.to_string();
+                    paths.push(child);
                 }
             }
             paths.truncate(MAX_ITEMS);
             paths
         } else {
-            vec![Item {
-                title: item.title.clone(),
-                value: expanded_path_str,
-                category: item.category.clone(),
-                display: item.display.clone(),
-                source: item.source.clone(),
-                preview_template: item.preview_template.clone(),
-            }]
+            let mut single = item.clone();
+            single.value = expanded_path_str;
+            vec![single]
         }
     } else {
         vec![item.clone()]
