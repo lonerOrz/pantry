@@ -10,9 +10,3 @@ pub struct Item {
     pub preview_template: Option<String>,
 }
 
-impl Item {
-    /// Get the display text content
-    pub fn display_text(&self) -> String {
-        self.value.clone()
-    }
-}
