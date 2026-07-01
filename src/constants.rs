@@ -17,3 +17,6 @@ pub const MIN_WINDOW_WIDTH: i32 = 320;
 pub const MIN_WINDOW_HEIGHT: i32 = 240;
 pub const SEARCH_DEBOUNCE_MS: u64 = 80;
 pub const DEFAULT_CLIPBOARD_CMD: &str = "cliphist decode {}";
+pub const VIDEO_EXTENSIONS: &[&str] = &["mp4", "webm", "mkv", "avi", "mov", "wmv", "flv", "m4v"];
+pub const IMAGE_EXTENSIONS: &[&str] = &["png", "jpeg", "jpg", "gif", "webp", "bmp", "tiff", "tif"];
+pub const GIF_EXTENSION: &str = "gif";

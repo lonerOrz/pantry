@@ -7,10 +7,10 @@ use super::decoder::ImageDecoder;
 
 pub fn is_video(path: &Path) -> bool {
     match path.extension().and_then(|s| s.to_str()) {
-        Some(ext) => matches!(
-            ext.to_lowercase().as_str(),
-            "mp4" | "webm" | "mkv" | "avi" | "mov" | "wmv" | "flv" | "m4v"
-        ),
+        Some(ext) => {
+            let ext_lower = ext.to_lowercase();
+            crate::constants::VIDEO_EXTENSIONS.contains(&ext_lower.as_str())
+        }
         None => false,
     }
 }

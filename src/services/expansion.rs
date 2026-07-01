@@ -3,11 +3,6 @@ use crate::domain::DisplayMode;
 use crate::domain::item::Item;
 use crate::services::process::CommandExecutor;
 
-const MEDIA_EXTENSIONS: &[&str] = &[
-    "png", "jpeg", "jpg", "gif", "webp", "bmp", "tiff", "tif", "mp4", "webm", "mkv", "avi", "mov",
-    "wmv", "flv", "m4v",
-];
-
 /// Process item for display (expand directories, etc.)
 pub fn process_for_display(item: &Item) -> Vec<Item> {
     if matches!(item.display, DisplayMode::Picture) {
@@ -27,7 +22,11 @@ pub fn process_for_display(item: &Item) -> Vec<Item> {
                     && path
                         .extension()
                         .and_then(|s| s.to_str())
-                        .map(|ext| MEDIA_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+                        .map(|ext| {
+                            let ext_lower = ext.to_lowercase();
+                            crate::constants::IMAGE_EXTENSIONS.contains(&ext_lower.as_str())
+                                || crate::constants::VIDEO_EXTENSIONS.contains(&ext_lower.as_str())
+                        })
                         .unwrap_or(false)
                 {
                     let path_str = path.to_string_lossy();

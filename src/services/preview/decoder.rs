@@ -24,7 +24,7 @@ impl ImageDecoder for GdkPixbufDecoder {
         if path
             .extension()
             .and_then(|s| s.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("gif"))
+            .is_some_and(|ext| ext.eq_ignore_ascii_case(crate::constants::GIF_EXTENSION))
         {
             load_gif_first_frame(path, max_width, max_height)
         } else {
